@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Button Click Example</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+</head>
+<body>
+    <button id="myButton">Generate Account</button>
+    <p id="accountNumber"></p>
+    <br>
+    <h1>Log in to existing account</h1>
+    <input type="text" id="existingNumber" value="Enter your account number">
+    <button id="loginExisting">Login</button>
+    <a href="/dashboard">Click here to go to your dashboard</a>
+    <script>
+    $(document).ready(function(){
+        $("#myButton").click(function(){
+            $.ajax({
+                url: "/button-click",
+                type: "get",
+                success: function(response) {
+                    $("#accountNumber").html(response);
+                },
+                error: function(xhr) {
+                    // handle error
+                }
+            });
+        });
+        $("#loginExisting").click(function(){
+            $.ajax({
+                url: "/login-existing",
+                type: "post",
+                contentType: "application/json",
+                data: JSON.stringify({
+                    accountNumber: $("#existingNumber").val()
+                }),
+                success: function(response) {
+                    if(response.message) {
+                        alert(response.message + ". Number: " + response.number);
+                    } else if(response.error) {
+                        alert(response.error);
+                    }
+                },
+                error: function(xhr) {
+                    // handle error
+                }
+            });
+        });
+    });
+    </script>
+</body>
+</html>

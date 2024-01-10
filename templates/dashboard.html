@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home</title>
+</head>
+<body>
+    <h1 id="userMessage">You are logged in as: </h1>
+    <h2>Your files:</h2>
+    <input type="file" value="Upload a file">
+    <input type="submit" value="Upload!">
+</body>
+<script>
+    // Vi trenger brukeren sin cookie til og hente ut brukerens informasjon
+    let cookie = document.cookie;
+    let cookieArray = cookie.split("=");
+    let cookieValue = cookieArray[1];
+    console.log(cookieValue);
+    document.getElementById("userMessage").append(cookieValue);
+</script>
+</html>
