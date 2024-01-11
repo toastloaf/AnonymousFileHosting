@@ -8,8 +8,12 @@
 <body>
     <h1 id="userMessage">You are logged in as: </h1>
     <h2>Your files:</h2>
-    <input type="file" value="Upload a file">
-    <input type="submit" value="Upload!">
+    <input type="file" value="Upload a file" id="fileInput">
+    <input type="submit" value="Upload!" id="submitUpload" onclick="sendfile()">
+    <a id="uploadStatus"></a><br>
+    <div id="fileContainer">
+        <input type="button" value="Download" style="visibility: hidden;" id="downloadButton">
+    </div>
 </body>
 <script>
     // Vi trenger brukeren sin cookie til og hente ut brukerens informasjon
@@ -18,5 +22,51 @@
     let cookieValue = cookieArray[1];
     console.log(cookieValue);
     document.getElementById("userMessage").append(cookieValue);
+
+    // Na skal vi hente filen som blir lastet opp, og sende den til python backenden.
+function sendfile() {
+    const formData = new FormData();
+    const fileInput = document.getElementById("fileInput");
+    formData.append("file", fileInput.files[0]);
+    const options = {
+        headers: {
+            "Content-Type": fileInput.files[0].type,
+        },
+        method: "POST",
+        body: formData,
+        credentials: 'include'
+    };
+    console.log(options);
+
+    fetch("http://localhost:5000/upload", options)
+        .then((response) => {
+            console.log(response);
+            document.getElementById("uploadStatus").innerHTML = "File uploaded!";
+        })
+        .catch((error) => {
+            console.log(error);
+            document.getElementById("uploadStatus").innerHTML = "File upload failed! Server is probably fucked up, skill issue!";
+        });
+}
+
+fetch('/get-files')
+    .then(response => response.json())
+    .then(files => {
+        const fileContainer = document.getElementById('fileContainer');
+        files.forEach(file => {
+            const fileBox = document.createElement('div');
+            fileBox.textContent = `File name: ${file.name}, File size: ${file.size}`;
+
+            const downloadButton = document.createElement('button');
+            downloadButton.textContent = 'Download';
+            downloadButton.dataset.filename = file.name;
+            downloadButton.addEventListener('click', function() {
+                window.location.href = `/download-file/${this.dataset.filename}`;
+            });
+
+            fileBox.appendChild(downloadButton);
+            fileContainer.appendChild(fileBox);
+        });
+    });
 </script>
 </html>

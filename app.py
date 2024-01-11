@@ -1,9 +1,13 @@
-from flask import Flask, jsonify, render_template, request, make_response
+from flask import Flask, jsonify, render_template, request, make_response, send_file
+from werkzeug.utils import secure_filename
 import secrets
 import pymongo as mongo
 import re
+import os
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app, supports_credentials=True)
 
 @app.route('/')
 def index():
@@ -81,6 +85,39 @@ def dashboard():
     except ValueError as e:
         print(e)
         return jsonify({"message": "Number does not exist in the database"})
+    
+@app.route('/upload', methods=['POST', 'GET'])
+def upload_file():
+    account_number = request.cookies.get('account')
+    print("Account number: ", account_number)
+    if 'file' not in request.files:
+        return 'No file part in the request', 400
+    file = request.files['file']
+    if file.filename == '':
+        return 'No selected file', 400
+    if file:
+        filename = secure_filename(file.filename)
+        file.save(os.path.join(f'./data/{account_number}', filename))
+        return 'File uploaded!', 200
+
+@app.route('/get-files', methods=['GET'])
+def get_files():
+    account_number = request.cookies.get('account')
+    if not os.path.exists(f'./data/{account_number}'):
+        os.makedirs(f'./data/{account_number}')
+    try:
+        files = os.listdir(f'./data/{account_number}')
+        file_info = [{'name': f, 'size': os.path.getsize(f'./data/{f}')} for f in files]
+    except FileNotFoundError:
+        print("FUCK")
+        return jsonify({"message": "No files found"}), 404
+    return jsonify(file_info)
+
+@app.route('/download-file/<filename>', methods=['GET'])
+def download_file(filename):
+    account_number = request.cookies.get('account')
+    print("Account number: ", account_number)
+    return send_file(f'./data/{account_number}/{filename}', as_attachment=True)
 
 if __name__ == '__main__':
     app.run(debug=True)
