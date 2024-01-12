@@ -86,10 +86,10 @@ def dashboard():
         print(e)
         return jsonify({"message": "Number does not exist in the database"})
     
-@app.route('/upload', methods=['POST', 'GET'])
+@app.route('/upload-file', methods=['POST', 'GET'])
 def upload_file():
     account_number = request.cookies.get('account')
-    print("Account number: ", account_number)
+    print("Account number for upload: ", account_number)
     if 'file' not in request.files:
         return 'No file part in the request', 400
     file = request.files['file']
@@ -98,16 +98,19 @@ def upload_file():
     if file:
         filename = secure_filename(file.filename)
         file.save(os.path.join(f'./data/{account_number}', filename))
-        return 'File uploaded!', 200
+        return jsonify({"message": "File uploaded successfully"}), 200
 
 @app.route('/get-files', methods=['GET'])
 def get_files():
     account_number = request.cookies.get('account')
+    print("Account number for get files: ", account_number)
     if not os.path.exists(f'./data/{account_number}'):
         os.makedirs(f'./data/{account_number}')
     try:
         files = os.listdir(f'./data/{account_number}')
-        file_info = [{'name': f, 'size': os.path.getsize(f'./data/{f}')} for f in files]
+        print("Files: ", files)
+        file_info = [{'name': f, 'size': str(round(os.path.getsize(f'./data/{account_number}/{f}') / 1000000, 2)) + " MB"} for f in files]
+        print("File info: ", file_info)
     except FileNotFoundError:
         print("FUCK")
         return jsonify({"message": "No files found"}), 404
