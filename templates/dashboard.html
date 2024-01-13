@@ -12,7 +12,6 @@
     <input type="submit" value="Upload!" id="submitUpload">
     <a id="uploadStatus"></a><br>
     <div id="fileContainer">
-        <input type="button" value="Download" style="visibility: hidden;" id="downloadButton">
     </div>
 </body>
 <script>
@@ -31,6 +30,7 @@ submitUpload.addEventListener('click', function() {
     const file = fileInput.files[0];
     const formData = new FormData();
     formData.append('file', file);
+    document.getElementById('uploadStatus').textContent = 'File is being uploaded...';
 
     fetch('/upload-file', {
         method: 'POST',
@@ -39,23 +39,12 @@ submitUpload.addEventListener('click', function() {
         .then(response => response.json())
         .then(result => {
             const uploadStatus = document.getElementById('uploadStatus');
-            uploadStatus.textContent = result.message;
+            window.location.reload();
         });
 }
 )
-    // Get the submitUpload button
-    const submitUploadButton = document.getElementById('submitUpload');
 
-    // Add an event listener to the button
-    submitUploadButton.addEventListener('click', function() {
-        // Get the uploadStatus element
-        const uploadStatus = document.getElementById('uploadStatus');
-
-        // Clear the text in uploadStatus
-        uploadStatus.textContent = '';
-    });
-
-fetch('/get-files')
+fetch('/get-files') // Henter filene som brukeren har lastet opp
     .then(response => response.json())
     .then(files => {
         const fileContainer = document.getElementById('fileContainer');
@@ -64,13 +53,20 @@ fetch('/get-files')
             fileBox.textContent = `File name: ${file.name}, File size: ${file.size}`;
 
             const downloadButton = document.createElement('button');
+            const deleteButton = document.createElement('button');
             downloadButton.textContent = 'Download';
             downloadButton.dataset.filename = file.name;
             downloadButton.addEventListener('click', function() {
                 window.location.href = `/download-file/${this.dataset.filename}`;
             });
+            deleteButton.textContent = 'Delete';
+            deleteButton.dataset.filename = file.name;
+            deleteButton.addEventListener('click', function() {
+                window.location.href = `/delete-file/${this.dataset.filename}`;
+            });
 
             fileBox.appendChild(downloadButton);
+            fileBox.appendChild(deleteButton);
             fileContainer.appendChild(fileBox);
         });
     });

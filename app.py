@@ -1,10 +1,11 @@
-from flask import Flask, jsonify, render_template, request, make_response, send_file
-from werkzeug.utils import secure_filename
-import secrets
-import pymongo as mongo
-import re
-import os
-from flask_cors import CORS
+from flask import Flask, jsonify, render_template, request, make_response, send_file, redirect # Alle flask moduler som trengs.
+from werkzeug.utils import secure_filename # Sikkerhets modul som sjekker filnavn til og ungå angrep som exploiter serveren ved et farlig filnavn, werkzeug.utils kan også brukes til enkrypsjon av filer hvis nødvendig, men jeg har ikke lagt til dette.
+import secrets # Modul som genererer random tall, og er litt mer randomisert enn den vanlige random modulen.
+import pymongo as mongo # Modul som lar serveren koble till MongoDB databasen som handler bruker informasjon.
+import re # Modul som gjør det lettere og parse dokumenter, brukes til og finne informasjon i databasen.
+import os # Modul som gir serveren tilgang til operativ system funksjoner, brukes til lagring av filer og lage nye mapper.
+from flask_cors import CORS # Del av flask, lar serveren kommunisere med andre servere, den brukes til kommunikasjon med frontend.
+from datetime import timedelta # Modul som gjør det lettere og sette en expiration med cookies, ved bruk av dager i stedet for sekunder.
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
@@ -31,6 +32,7 @@ def button_click():
 @app.route('/login-existing', methods=['POST'])
 def check_existing_number():
     data = request.get_json()
+    print("Data: ", data)
     try:
         number = int(data.get('accountNumber'))
     except ValueError:
@@ -52,12 +54,13 @@ def check_existing_number():
             number_only = int(number_only[-1])
             print("Number only: ", number_only)
             resp = make_response("Hello, world!")
-            resp.set_cookie('account', str(number_only))
+            resp.set_cookie('account', str(number_only), max_age=timedelta(days=7)) # Cookie vil vare i 7 dager, jeg valgte og legge til dette for privacy og sikkerhet av brukeren sin konto, Kilde: https://verdantfox.com/blog/cookies-with-the-flask-web-framework#cookie-expirations
             print("Cookie debug: ", resp)
             print("Cookie set: ", request.cookies.get('account'))
             
-            return resp # Return the response object
+            return resp
         else:
+            print("No number found in the document")
             raise ValueError("No number found in the document")
     except ValueError as e:
         print(e)
@@ -121,6 +124,14 @@ def download_file(filename):
     account_number = request.cookies.get('account')
     print("Account number: ", account_number)
     return send_file(f'./data/{account_number}/{filename}', as_attachment=True)
+
+@app.route('/delete-file/<filename>', methods=['GET'])
+def delete_file(filename):
+    account_number = request.cookies.get('account')
+    print("Account number to be used for file deletion: ", account_number)
+    os.remove(f'./data/{account_number}/{filename}')
+    return redirect('/dashboard')
+
 
 if __name__ == '__main__':
     app.run(debug=True)
