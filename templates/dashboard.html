@@ -22,53 +22,78 @@
     console.log(cookieValue);
     document.getElementById("userMessage").append(cookieValue);
 
-// Na skal vi hente filen som blir lastet opp, og sende den til python backenden.
-const fileInput = document.getElementById('fileInput');
-const submitUpload = document.getElementById('submitUpload');
+    // Na skal vi hente filen som blir lastet opp, og sende den til python backenden.
+    const fileInput = document.getElementById('fileInput');
+    const submitUpload = document.getElementById('submitUpload');
+    let hashedfile; // Define hashedfile in the outer scope
 
-submitUpload.addEventListener('click', function() {
-    const file = fileInput.files[0];
-    const formData = new FormData();
-    formData.append('file', file);
-    document.getElementById('uploadStatus').textContent = 'File is being uploaded...';
+    async function computeHash(file) {
+        console.log('Beginning hash computation')
+        // Step 1: Read the file as an ArrayBuffer
+        const arrayBuffer = await file.arrayBuffer();
 
-    fetch('/upload-file', {
-        method: 'POST',
-        body: formData
-    })
-        .then(response => response.json())
-        .then(result => {
-            const uploadStatus = document.getElementById('uploadStatus');
-            window.location.reload();
-        });
-}
-)
+        // Step 2: Compute the hash
+        const hashBuffer = await window.crypto.subtle.digest('SHA-1', arrayBuffer);
 
-fetch('/get-files') // Henter filene som brukeren har lastet opp
-    .then(response => response.json())
-    .then(files => {
-        const fileContainer = document.getElementById('fileContainer');
-        files.forEach(file => {
-            const fileBox = document.createElement('div');
-            fileBox.textContent = `File name: ${file.name}, File size: ${file.size}`;
+        // Step 3: Convert the hash to a hex string
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-            const downloadButton = document.createElement('button');
-            const deleteButton = document.createElement('button');
-            downloadButton.textContent = 'Download';
-            downloadButton.dataset.filename = file.name;
-            downloadButton.addEventListener('click', function() {
-                window.location.href = `/download-file/${this.dataset.filename}`;
-            });
-            deleteButton.textContent = 'Delete';
-            deleteButton.dataset.filename = file.name;
-            deleteButton.addEventListener('click', function() {
-                window.location.href = `/delete-file/${this.dataset.filename}`;
-            });
+        return hashHex;
+    }
 
-            fileBox.appendChild(downloadButton);
-            fileBox.appendChild(deleteButton);
-            fileContainer.appendChild(fileBox);
-        });
+    fileInput.addEventListener('change', async (event) => {
+        const file = event.target.files[0];
+        hashedfile = await computeHash(file); // Assign the computed hash to hashedfile
+        console.log(`Hash of ${file.name}: ${hashedfile}`);
     });
+
+    submitUpload.addEventListener('click', function() {
+        console.log('Submit upload clicked')
+        const file = fileInput.files[0];
+        const formData = new FormData();
+        formData.append('file', file);
+        document.getElementById('uploadStatus').textContent = 'File is being uploaded...';
+        console.log('Filehash: ' + hashedfile);
+
+        formData.append('sha1hash', hashedfile); // Append the hash to the form data
+
+        fetch('/upload-file', {
+            method: 'POST',
+            body: formData,
+        })
+            .then(response => response.json())
+            .then(result => {
+                const uploadStatus = document.getElementById('uploadStatus');
+                window.location.reload();
+            });
+    });
+
+    fetch('/get-files') // Henter filene som brukeren har lastet opp
+        .then(response => response.json())
+        .then(files => {
+            const fileContainer = document.getElementById('fileContainer');
+            files.forEach(file => {
+                const fileBox = document.createElement('div');
+                fileBox.textContent = `File name: ${file.name}, File size: ${file.size}`;
+
+                const downloadButton = document.createElement('button');
+                const deleteButton = document.createElement('button');
+                downloadButton.textContent = 'Download';
+                downloadButton.dataset.filename = file.name;
+                downloadButton.addEventListener('click', function() {
+                    window.location.href = `/download-file/${this.dataset.filename}`;
+                });
+                deleteButton.textContent = 'Delete';
+                deleteButton.dataset.filename = file.name;
+                deleteButton.addEventListener('click', function() {
+                    window.location.href = `/delete-file/${this.dataset.filename}`;
+                });
+
+                fileBox.appendChild(downloadButton);
+                fileBox.appendChild(deleteButton);
+                fileContainer.appendChild(fileBox);
+            });
+        });
 </script>
 </html>

@@ -4,6 +4,7 @@ import secrets # Modul som genererer random tall, og er litt mer randomisert enn
 import pymongo as mongo # Modul som lar serveren koble till MongoDB databasen som handler bruker informasjon.
 import re # Modul som gjør det lettere og parse dokumenter, brukes til og finne informasjon i databasen.
 import os # Modul som gir serveren tilgang til operativ system funksjoner, brukes til lagring av filer og lage nye mapper.
+import hashlib
 from flask_cors import CORS # Del av flask, lar serveren kommunisere med andre servere, den brukes til kommunikasjon med frontend.
 from datetime import timedelta # Modul som gjør det lettere og sette en expiration med cookies, ved bruk av dager i stedet for sekunder.
 
@@ -94,11 +95,22 @@ def upload_file():
     account_number = request.cookies.get('account')
     print("Account number for upload: ", account_number)
     if 'file' not in request.files:
-        return 'No file part in the request', 400
+        return jsonify({"error": "No file part in the request"}), 400
     file = request.files['file']
+    filehash = request.form.get('sha1hash')
+    file_content = file.read()
+    serversidehash = hashlib.sha1(file_content).hexdigest()
+    file.seek(0)  # Reset the file pointer to the start
+    print("Client hash: ", filehash)
+    print("Server hash: ", serversidehash)
     if file.filename == '':
-        return 'No selected file', 400
-    if file:
+        print("No file was returned")
+        return jsonify({"error": "No selected file"}), 400
+    if filehash != serversidehash:
+        print("Hashes do not match")
+        return jsonify({"error": "Hashes do not match"}), 400
+    if file and filehash == serversidehash:
+        print("Hashes match, file uploaded successfully")
         filename = secure_filename(file.filename)
         file.save(os.path.join(f'./data/{account_number}', filename))
         return jsonify({"message": "File uploaded successfully"}), 200
@@ -115,7 +127,7 @@ def get_files():
         file_info = [{'name': f, 'size': str(round(os.path.getsize(f'./data/{account_number}/{f}') / 1000000, 2)) + " MB"} for f in files]
         print("File info: ", file_info)
     except FileNotFoundError:
-        print("FUCK")
+        print("No files found")
         return jsonify({"message": "No files found"}), 404
     return jsonify(file_info)
 
@@ -123,7 +135,11 @@ def get_files():
 def download_file(filename):
     account_number = request.cookies.get('account')
     print("Account number: ", account_number)
-    return send_file(f'./data/{account_number}/{filename}', as_attachment=True)
+    filepath = f'./data/{account_number}/{filename}'
+    sha1 = hashlib.sha1()
+    sha1.update(open(filepath, 'rb').read())
+    print("File hash: ", sha1.hexdigest())
+    return send_file(filepath, as_attachment=True)
 
 @app.route('/delete-file/<filename>', methods=['GET'])
 def delete_file(filename):
