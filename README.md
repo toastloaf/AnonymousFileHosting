@@ -12,5 +12,9 @@ Få cookie fra javascript i html filene: GitHub Copilot<br>
 Large filer i formData i javascript: GitHub Copilot<br>
 Ideen til og bruke CORS til sending av filer: Bing Search, husker ikke linken<br>
 Ideen til prosjektet: Mullvad VPN
+
+Deler som er laget av AI:<br>
+Fil hashing funksjonen git et problem med sjekking av fil størrelse, jeg brukte Github Copilot til å fikse det ved å reset fil pointeren.<br>
+JSON Response funksjonen i javascript var laget av GitHub Copilot for mesteparten.
 ## Dokumentasjon
 N/A
