@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Home</title>
+    <script src="https://cdn.jsdelivr.net/npm/js-sha1@0.6.0/src/sha1.min.js"></script>
 </head>
 <body>
     <h1 id="userMessage">You are logged in as: </h1>
@@ -42,32 +43,50 @@
         return hashHex;
     }
 
-    fileInput.addEventListener('change', async (event) => {
-        const file = event.target.files[0];
-        hashedfile = await computeHash(file); // Assign the computed hash to hashedfile
-        console.log(`Hash of ${file.name}: ${hashedfile}`);
+submitUpload.addEventListener('click', function() {
+    console.log('Submit upload clicked')
+    const file = fileInput.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    document.getElementById('uploadStatus').textContent = 'File is being uploaded...';
+
+    const chunkSize = 1024 * 1024 * 2; // 2MB chunks
+    const reader = new FileReader();
+    let offset = 0;
+    const hash = sha1.create();
+
+    reader.addEventListener('load', (event) => {
+        const buffer = event.target.result;
+        hash.update(new Uint8Array(buffer));
+        offset += buffer.byteLength;
+
+        if (offset < file.size) {
+            readSlice(offset);
+        } else {
+            hashedfile = hash.hex();
+            console.log(`Hash of ${file.name}: ${hashedfile}`);
+
+            formData.append('sha1hash', hashedfile); // Append the hash to the form data
+
+            fetch('/upload-file', {
+                method: 'POST',
+                body: formData,
+            })
+                .then(response => response.json())
+                .then(result => {
+                    const uploadStatus = document.getElementById('uploadStatus');
+                    window.location.reload();
+                });
+        }
     });
 
-    submitUpload.addEventListener('click', function() {
-        console.log('Submit upload clicked')
-        const file = fileInput.files[0];
-        const formData = new FormData();
-        formData.append('file', file);
-        document.getElementById('uploadStatus').textContent = 'File is being uploaded...';
-        console.log('Filehash: ' + hashedfile);
+    function readSlice(start) {
+        const slice = file.slice(start, start + chunkSize);
+        reader.readAsArrayBuffer(slice);
+    }
 
-        formData.append('sha1hash', hashedfile); // Append the hash to the form data
-
-        fetch('/upload-file', {
-            method: 'POST',
-            body: formData,
-        })
-            .then(response => response.json())
-            .then(result => {
-                const uploadStatus = document.getElementById('uploadStatus');
-                window.location.reload();
-            });
-    });
+    readSlice(0);
+});
 
     fetch('/get-files') // Henter filene som brukeren har lastet opp
         .then(response => response.json())

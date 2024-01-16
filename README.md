@@ -16,5 +16,9 @@ Ideen til prosjektet: Mullvad VPN
 Deler som er laget av AI:<br>
 Fil hashing funksjonen git et problem med sjekking av fil størrelse, jeg brukte Github Copilot til å fikse det ved å reset fil pointeren.<br>
 JSON Response funksjonen i javascript var laget av GitHub Copilot for mesteparten.
+
+## Kode som er laget av AI
+
+
 ## Dokumentasjon
 N/A
