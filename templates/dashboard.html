@@ -50,7 +50,7 @@ submitUpload.addEventListener('click', function() {
     formData.append('file', file);
     document.getElementById('uploadStatus').textContent = 'File is being uploaded...';
 
-    const chunkSize = 1024 * 1024 * 2; // 2MB chunks
+    const chunkSize = 1024 * 1024 * 32; // 32MB chunks
     const reader = new FileReader();
     let offset = 0;
     const hash = sha1.create();

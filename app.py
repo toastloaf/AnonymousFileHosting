@@ -71,7 +71,11 @@ def check_existing_number():
 def dashboard():
     # Her skal vi sjekke om brukeren sin cookie matcher en bruker i databasen, hvis den matcher så skal vi vise dashboard.html med denne brukeren sin konto innhold
     account_number = request.cookies.get('account')
-    print("Account number: ", account_number)
+    if account_number and account_number.isdigit() and len(account_number) <= 11:
+        account_number = int(account_number)
+        print("Account number: ", account_number)
+    else:
+        return jsonify({"error": "Invalid account number"}), 400
     mongo_client = mongo.MongoClient('mongodb://localhost:27017/')
     db = mongo_client['meow']
     collection = db['woof']
@@ -93,7 +97,12 @@ def dashboard():
 @app.route('/upload-file', methods=['POST', 'GET'])
 def upload_file():
     account_number = request.cookies.get('account')
-    print("Account number for upload: ", account_number)
+    if account_number and account_number.isdigit() and len(account_number) <= 11:
+        account_number = int(account_number)
+        print("Account number: ", account_number)
+    else:
+        return jsonify({"error": "Invalid account number"}), 400
+    print("Account number for upload: ", int(account_number))
     if 'file' not in request.files:
         return jsonify({"error": "No file part in the request"}), 400
     file = request.files['file']
