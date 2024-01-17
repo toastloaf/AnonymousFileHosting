@@ -1,2 +1,3 @@
 Jeg lager et program til fil lagring på en python server, den bruker et anonymt konto nummer system til lagring av filer.
 Denne uken skal jeg utvikle dette prosjektet med css, debugging og mer funksjoner, kanksje enkrysjon av filer, hashing, privat nøkkler, etc.
+Neste uken skal vi fortsette med utvikling av prosjektet, men jeg skal sikkert lage et til prosjekt fordi jeg begynner og bli ferdig med dette.
