@@ -10,7 +10,8 @@
     <h1 id="userMessage">You are logged in as: </h1>
     <h2>Your files:</h2>
     <input type="file" value="Upload a file" id="fileInput">
-    <input type="submit" value="Upload!" id="submitUpload">
+    <input type="submit" value="Upload!" id="submitUpload"><br>
+    <input type="file" value="Upload Keyfile" id="keyFileInput">
     <a id="uploadStatus"></a><br>
     <div id="fileContainer">
     </div>
@@ -43,6 +44,12 @@
         return hashHex;
     }
 
+    document.getElementById('keyFileInput').addEventListener('change', async (event) => {
+        const file = event.target.files[0];
+        const fileContent = await file.text();
+        localStorage.setItem('keyFile', fileContent);
+    });
+
 submitUpload.addEventListener('click', function() {
     console.log('Submit upload clicked')
     const file = fileInput.files[0];
@@ -67,6 +74,7 @@ submitUpload.addEventListener('click', function() {
             console.log(`Hash of ${file.name}: ${hashedfile}`);
 
             formData.append('sha1hash', hashedfile); // Append the hash to the form data
+            formData.append('keyFile', localStorage.getItem('keyFile')); // Append the keyfile to the form data
 
             fetch('/upload-file', {
                 method: 'POST',
@@ -101,7 +109,28 @@ submitUpload.addEventListener('click', function() {
                 downloadButton.textContent = 'Download';
                 downloadButton.dataset.filename = file.name;
                 downloadButton.addEventListener('click', function() {
-                    window.location.href = `/download-file/${this.dataset.filename}`;
+                    const keyFile = localStorage.getItem('keyFile');
+                    const filename = this.dataset.filename;
+                    const formData = new FormData();
+                    formData.append('keyFile', keyFile);
+                    console.log("Filename: ", filename);  // Add this line
+                    fetch(`/download-file/${filename}`, {  // Append the filename to the URL
+                        method: 'POST',
+                        body: formData,
+                    })
+                        .then(response => {
+                            console.log("Server response: ", response);  // Add this line
+                            return response.blob();
+                        })
+                        .then(blob => {
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = this.dataset.filename;
+                            document.body.appendChild(a);
+                            a.click();
+                            a.remove();
+                        });
                 });
                 deleteButton.textContent = 'Delete';
                 deleteButton.dataset.filename = file.name;

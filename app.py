@@ -1,3 +1,4 @@
+import base64
 from flask import Flask, jsonify, render_template, request, make_response, send_file, redirect # Alle flask moduler som trengs.
 from werkzeug.utils import secure_filename # Sikkerhets modul som sjekker filnavn til og ungå angrep som exploiter serveren ved et farlig filnavn, werkzeug.utils kan også brukes til enkrypsjon av filer hvis nødvendig, men jeg har ikke lagt til dette.
 import secrets # Modul som genererer random tall, og er litt mer randomisert enn den vanlige random modulen.
@@ -5,6 +6,7 @@ import pymongo as mongo # Modul som lar serveren koble till MongoDB databasen so
 import re # Modul som gjør det lettere og parse dokumenter, brukes til og finne informasjon i databasen.
 import os # Modul som gir serveren tilgang til operativ system funksjoner, brukes til lagring av filer og lage nye mapper.
 import hashlib
+from cryptography.fernet import Fernet
 from flask_cors import CORS # Del av flask, lar serveren kommunisere med andre servere, den brukes til kommunikasjon med frontend.
 from datetime import timedelta # Modul som gjør det lettere og sette en expiration med cookies, ved bruk av dager i stedet for sekunder.
 
@@ -25,6 +27,14 @@ def button_click():
     try:
         x = collection.insert_one(doc)
         print(x.inserted_id)
+        # Nå skal vi lage enkyrpteringsnøkkel for brukeren, og lagre den i folderen til brukeren.
+        key = Fernet.generate_key()
+        f = Fernet(key)
+        if not os.path.exists(f'./data/{generatednumber}'):
+            os.makedirs(f'./data/{generatednumber}')
+        with open(f'./data/{generatednumber}/partyrock.key', 'wb') as key_file:
+            key_file.write(key)
+        print("Key file created for user ", generatednumber)
     except Exception as e:
         print("An error occurred:", e)
         return jsonify({"error": str(e)}), 500
@@ -107,6 +117,7 @@ def upload_file():
         return jsonify({"error": "No file part in the request"}), 400
     file = request.files['file']
     filehash = request.form.get('sha1hash')
+    keyfile = request.form.get('keyFile')
     file_content = file.read()
     serversidehash = hashlib.sha1(file_content).hexdigest()
     file.seek(0)  # Reset the file pointer to the start
@@ -119,9 +130,20 @@ def upload_file():
         print("Hashes do not match")
         return jsonify({"error": "Hashes do not match"}), 400
     if file and filehash == serversidehash:
-        print("Hashes match, file uploaded successfully")
+        print("Hashes match, file encryption starting")
         filename = secure_filename(file.filename)
-        file.save(os.path.join(f'./data/{account_number}', filename))
+        print("Filename: ", filename)
+        if keyfile:
+            print("Keyfile provided: ", keyfile)
+            key = Fernet(keyfile)
+        else:
+            print("No key file provided")
+            return jsonify({"error": "No key file provided"}), 400
+        print("Key: ", key)
+        encrypted_file = key.encrypt(file_content)
+        with open(f'./data/{account_number}/{filename}', 'wb') as f:
+            f.write(encrypted_file)
+        print("File saved with encryption")
         return jsonify({"message": "File uploaded successfully"}), 200
 
 @app.route('/get-files', methods=['GET'])
@@ -140,15 +162,33 @@ def get_files():
         return jsonify({"message": "No files found"}), 404
     return jsonify(file_info)
 
-@app.route('/download-file/<filename>', methods=['GET'])
+@app.route('/download-file/<filename>', methods=['POST'])
 def download_file(filename):
     account_number = request.cookies.get('account')
     print("Account number: ", account_number)
     filepath = f'./data/{account_number}/{filename}'
+    print("Filepath: ", filepath)
     sha1 = hashlib.sha1()
     sha1.update(open(filepath, 'rb').read())
     print("File hash: ", sha1.hexdigest())
-    return send_file(filepath, as_attachment=True)
+
+    key = request.form.get('keyFile')
+    fernet = Fernet(key)
+
+    try:
+        with open(filepath, 'rb') as file:
+            encrypted_data = file.read()
+            decrypted_data = fernet.decrypt(encrypted_data)
+    except FileNotFoundError:
+        print(f"File {filepath} not found")
+        return jsonify({"message": f"File {filepath} not found"}), 404
+    except Exception as e:
+        print("Decryption failed:", str(e))
+        return jsonify({"message": "Decryption failed"}), 500
+
+    response = make_response(decrypted_data)
+    response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+    return response
 
 @app.route('/delete-file/<filename>', methods=['GET'])
 def delete_file(filename):
