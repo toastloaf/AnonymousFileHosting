@@ -172,6 +172,10 @@ def download_file(filename):
     sha1.update(open(filepath, 'rb').read())
     print("File hash: ", sha1.hexdigest())
 
+    if filename == 'partyrock.key':
+        print("Key file requested")
+        return send_file(filepath, as_attachment=True)
+
     key = request.form.get('keyFile')
     fernet = Fernet(key)
 
