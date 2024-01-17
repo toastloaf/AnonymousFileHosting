@@ -66,8 +66,6 @@ def check_existing_number():
             print("Number only: ", number_only)
             resp = make_response("Hello, world!")
             resp.set_cookie('account', str(number_only), max_age=timedelta(days=7)) # Cookie vil vare i 7 dager, jeg valgte og legge til dette for privacy og sikkerhet av brukeren sin konto, Kilde: https://verdantfox.com/blog/cookies-with-the-flask-web-framework#cookie-expirations
-            print("Cookie debug: ", resp)
-            print("Cookie set: ", request.cookies.get('account'))
             
             return resp
         else:
@@ -149,6 +147,11 @@ def upload_file():
 @app.route('/get-files', methods=['GET'])
 def get_files():
     account_number = request.cookies.get('account')
+    if account_number and account_number.isdigit() and len(account_number) <= 11:
+        account_number = int(account_number)
+        print("Account number: ", account_number)
+    else:
+        return jsonify({"error": "Invalid account number"}), 400
     print("Account number for get files: ", account_number)
     if not os.path.exists(f'./data/{account_number}'):
         os.makedirs(f'./data/{account_number}')
@@ -165,6 +168,11 @@ def get_files():
 @app.route('/download-file/<filename>', methods=['POST'])
 def download_file(filename):
     account_number = request.cookies.get('account')
+    if account_number and account_number.isdigit() and len(account_number) <= 11:
+        account_number = int(account_number)
+        print("Account number: ", account_number)
+    else:
+        return jsonify({"error": "Invalid account number"}), 400
     print("Account number: ", account_number)
     filepath = f'./data/{account_number}/{filename}'
     print("Filepath: ", filepath)
@@ -197,6 +205,11 @@ def download_file(filename):
 @app.route('/delete-file/<filename>', methods=['GET'])
 def delete_file(filename):
     account_number = request.cookies.get('account')
+    if account_number and account_number.isdigit() and len(account_number) <= 11:
+        account_number = int(account_number)
+        print("Account number: ", account_number)
+    else:
+        return jsonify({"error": "Invalid account number"}), 400
     print("Account number to be used for file deletion: ", account_number)
     os.remove(f'./data/{account_number}/{filename}')
     return redirect('/dashboard')

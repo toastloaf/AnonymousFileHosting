@@ -4,16 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Home</title>
+    <link rel="stylesheet" href="../static/css/output.css">
     <script src="https://cdn.jsdelivr.net/npm/js-sha1@0.6.0/src/sha1.min.js"></script>
 </head>
-<body>
-    <h1 id="userMessage">Du er logget in som: </h1>
+<body class="bg-gray-800 text-white">
+    <h1 id="userMessage" class="font-sans">Du er logget in som: </h1>
     <h2>Dine filer:</h2>
     <input type="file" value="Upload a file" id="fileInput">
     <input type="submit" value="Upload!" id="submitUpload"><br>
     <input type="file" value="Upload Keyfile" id="keyFileInput">
     <a id="uploadStatus"></a><br>
-    <div id="fileContainer">
+    <div id="fileContainer" class="mr-4 border border-gray-300 rounded-lg p-4"></div>
     </div>
 </body>
 <script>
@@ -107,6 +108,7 @@ submitUpload.addEventListener('click', function() {
                 const downloadButton = document.createElement('button');
                 const deleteButton = document.createElement('button');
                 downloadButton.textContent = 'Download';
+                downloadButton.className = 'mr-4 border border-gray-300 rounded-lg p-3';
                 downloadButton.dataset.filename = file.name;
                 downloadButton.addEventListener('click', function() {
                     const keyFile = localStorage.getItem('keyFile');
