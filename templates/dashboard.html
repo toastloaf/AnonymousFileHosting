@@ -10,9 +10,11 @@
 <body class="bg-gray-800 text-white">
     <h1 id="userMessage" class="font-sans">Du er logget in som: </h1>
     <h2>Dine filer:</h2>
+    <p1>↓Select file to upload here</p1>
+    <br>
     <input type="file" value="Upload a file" id="fileInput">
-    <input type="submit" value="Upload!" id="submitUpload"><br>
-    <input type="file" value="Upload Keyfile" id="keyFileInput">
+    <input type="submit" value="Upload!" id="submitUpload" class="mr-4 border border-gray-300 rounded-lg p-3"><br>
+    <input type="file" value="Upload Keyfile" id="keyFileInput"><p>↑ Select your keyfile here</p>
     <a id="uploadStatus"></a><br>
     <div id="fileContainer" class="mr-4 border border-gray-300 rounded-lg p-4"></div>
     </div>
@@ -146,4 +148,7 @@ submitUpload.addEventListener('click', function() {
             });
         });
 </script>
+<footer style="text-align: center;">
+    <p>Made with spaghetti code</p>
+</footer>
 </html>

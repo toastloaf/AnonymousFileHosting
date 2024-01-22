@@ -197,7 +197,7 @@ def download_file(filename):
     except Exception as e:
         print("Decryption failed:", str(e))
         return jsonify({"message": "Decryption failed"}), 500
-
+    
     response = make_response(decrypted_data)
     response.headers['Content-Disposition'] = f'attachment; filename={filename}'
     return response

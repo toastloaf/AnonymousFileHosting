@@ -5,14 +5,14 @@
     <link rel="stylesheet" href="../static/css/output.css">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
 </head>
-<body>
-    <button id="myButton">Generate Account</button>
+<body class="bg-gray-800 text-white">
+    <button id="myButton" class="mr-4 border border-gray-300 rounded-lg p-3">Generate Account</button>
     <p id="accountNumber"></p>
     <br>
     <h1>Log in to existing account</h1>
-    <input type="text" id="existingNumber" value="Enter your account number">
-    <button id="loginExisting" onclick="window.location.href='dashboard'">Login</button>
-    <a href="/dashboard">Click here to go to your dashboard</a>
+    <input type="text" id="existingNumber" placeholder="Account Number" style="color: black;">
+    <button id="loginExisting" class="mr-4 border border-gray-300 rounded-lg p-3" onclick="window.location.href='dashboard'; localStorage.removeItem('keyFile');">Login</button>
+    <a href="/dashboard" class="mr-4 border border-gray-300 rounded-lg p-3">Click here to go to your dashboard</a>
     <script>
     $(document).ready(function(){
         $("#myButton").click(function(){
@@ -43,7 +43,7 @@
                     }
                 },
                 error: function(xhr) {
-                    // handle error
+                    response = JSON.parse(xhr.responseText);
                 }
             });
         });
