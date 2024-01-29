@@ -37,6 +37,12 @@ Du skal nå se dashboard siden, hvis du skal laste opp filer, må du ha enkrypsj
 2. Det anbefales at du sletter nøkkelen fra serveren etter du har lastet den ned, trykk på **Delete** knappen.
 3. Nå kan du velge din enkrypsjon nøkkel ved og trykke på den nederste **Velg fil** knappen, og velge **partyrock.key** filen som du nylig lastet ned.
 4. Du er nå klar til og laste opp filer, Trykk på den øverste **Velg fil** knappen, og velg en fil du vil laste opp.
-5. Trykk på **Upload!** knappen.
+5. Trykk på **Last opp** knappen.
 
-*TBD*
+### Hvordan det fungerer
+#### Innlogging
+Innlogging systemet er basert på et konto nummer system, som bruker en modul til og lage et tilfeldig konto nummer på lengden av 10, som er lagret på mongoDB databasen, og er lagret som en cookie når du logger inn, og slettes etter 1 uke for å forhindre at noen kan få tak i konto nummeret ditt.
+#### Fil-opplasting
+Fil-opplasting systemet bruker fil hashing til og verifisere at filen du lastet opp ikke blir endret etter opplasting, for eksempel til og hindre korrupsjon, filen blir delt opp i 32MB chunks, dette gjør det mulig og sjekke filer som er over 2GB i størrelse (2GB er limit i javascript), og det reduserer hvor mye RAM som blir brukt opp til og sjekke filen, fordi den deles opp og sjekker hver del og ikke hele filen på en gang, etter filen har blit sjekket, blir den sendt til serveren, og serveren sjekker filen igjen og verifiserer at filen som er lastet op matcher filen som serveren har fått, og deretter blir filen enkryptert med en enkrypsjon nøkkel som kun brukeren har tilgang til.
+#### Fil-nedlasting
+Når brukeren velger og laste ned en fil, blir enkrypsjons nøkkelen sendt til serveren fra localStorage i en request, som serveren bruker til og dekryptere filen, og deretter sende den tilbake til brukeren sin nettleser, serveren lagrer ikke den dekrypterte filen eller enkrypsjons nøkkelen.
