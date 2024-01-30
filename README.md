@@ -41,7 +41,7 @@ Du skal nå se dashboard siden, hvis du skal laste opp filer, må du ha enkrypsj
 
 ### Hvordan det fungerer
 #### Innlogging
-Innlogging systemet er basert på et konto nummer system, som bruker en modul til og lage et tilfeldig konto nummer på lengden av 10, som er lagret på mongoDB databasen, og er lagret som en cookie når du logger inn, og slettes etter 1 uke for å forhindre at noen kan få tak i konto nummeret ditt.
+Innlogging systemet er basert på et konto nummer system, som bruker en modul til og lage et tilfeldig konto nummer på lengden av 10, som er lagret på mongoDB databasen, og er lagret som en cookie når du logger inn, og slettes fra din nettleser sin lokale cookies etter 1 uke for å forhindre at noen kan få tak i konto nummeret ditt.
 #### Fil-opplasting
 Fil-opplasting systemet bruker fil hashing til og verifisere at filen du lastet opp ikke blir endret etter opplasting, for eksempel til og hindre korrupsjon, filen blir delt opp i 32MB chunks, dette gjør det mulig og sjekke filer som er over 2GB i størrelse (2GB er limit i javascript), og det reduserer hvor mye RAM som blir brukt opp til og sjekke filen, fordi den deles opp og sjekker hver del og ikke hele filen på en gang, etter filen har blit sjekket, blir den sendt til serveren, og serveren sjekker filen igjen og verifiserer at filen som er lastet op matcher filen som serveren har fått, og deretter blir filen enkryptert med en enkrypsjon nøkkel som kun brukeren har tilgang til.
 #### Fil-nedlasting
