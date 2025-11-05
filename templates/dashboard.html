@@ -3,152 +3,448 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Home</title>
-    <link rel="stylesheet" href="../static/css/output.css">
-    <script src="https://cdn.jsdelivr.net/npm/js-sha1@0.6.0/src/sha1.min.js"></script>
-</head>
-<body class="bg-gray-800 text-white">
-    <h1 id="userMessage" class="font-sans">Du er logget in som: </h1>
-    <h2>Dine filer:</h2>
-    <p1>↓ Last opp en fil her</p1>
-    <br>
-    <input type="file" value="Upload a file" id="fileInput">
-    <input type="submit" value="Last opp" id="submitUpload" class="mr-4 border border-gray-300 rounded-lg p-3"><br>
-    <input type="file" value="Upload Keyfile" id="keyFileInput"><p>↑ Velg din krypterings nøkkel</p>
-    <a id="uploadStatus"></a><br>
-    <div id="fileContainer" class="mr-4 border border-gray-300 rounded-lg p-4"></div>
-    </div>
-</body>
-<script>
-    // Vi trenger brukeren sin cookie til og hente ut brukerens informasjon
-    let cookie = document.cookie;
-    let cookieArray = cookie.split("=");
-    let cookieValue = cookieArray[1];
-    console.log(cookieValue);
-    document.getElementById("userMessage").append(cookieValue);
-
-    // Na skal vi hente filen som blir lastet opp, og sende den til python backenden.
-    const fileInput = document.getElementById('fileInput');
-    const submitUpload = document.getElementById('submitUpload');
-    let hashedfile; // Define hashedfile in the outer scope
-
-    async function computeHash(file) {
-        console.log('Beginning hash computation')
-        // Step 1: Read the file as an ArrayBuffer
-        const arrayBuffer = await file.arrayBuffer();
-
-        // Step 2: Compute the hash
-        const hashBuffer = await window.crypto.subtle.digest('SHA-1', arrayBuffer);
-
-        // Step 3: Convert the hash to a hex string
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-        return hashHex;
-    }
-
-    document.getElementById('keyFileInput').addEventListener('change', async (event) => {
-        const file = event.target.files[0];
-        const fileContent = await file.text();
-        localStorage.setItem('keyFile', fileContent);
-    });
-
-submitUpload.addEventListener('click', function() {
-    console.log('Submit upload clicked')
-    const file = fileInput.files[0];
-    const formData = new FormData();
-    formData.append('file', file);
-    document.getElementById('uploadStatus').textContent = 'File is being uploaded...';
-
-    const chunkSize = 1024 * 1024 * 32; // 32MB chunks
-    const reader = new FileReader();
-    let offset = 0;
-    const hash = sha1.create();
-
-    reader.addEventListener('load', (event) => {
-        const buffer = event.target.result;
-        hash.update(new Uint8Array(buffer));
-        offset += buffer.byteLength;
-
-        if (offset < file.size) {
-            readSlice(offset);
-        } else {
-            hashedfile = hash.hex();
-            console.log(`Hash of ${file.name}: ${hashedfile}`);
-
-            formData.append('sha1hash', hashedfile); // Append the hash to the form data
-            formData.append('keyFile', localStorage.getItem('keyFile')); // Append the keyfile to the form data
-
-            fetch('/upload-file', {
-                method: 'POST',
-                body: formData,
-            })
-                .then(response => response.json())
-                .then(result => {
-                    const uploadStatus = document.getElementById('uploadStatus');
-                    window.location.reload();
-                });
+    <meta name="description" content="File hosting dashboard">
+    <title>Dashboard - Anonymous File Hosting</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
-    });
+        .card {
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .file-item {
+            transition: all 0.2s;
+        }
+        .file-item:hover {
+            transform: translateY(-2px);
+        }
+        .progress-bar {
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen py-8 px-4">
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <header class="mb-8">
+            <div class="card rounded-2xl shadow-2xl p-6 border border-white/20">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div>
+                        <h1 class="text-3xl font-bold text-white mb-2">File Dashboard</h1>
+                        <p class="text-white/80">Account: <code class="font-mono font-semibold">{{ account_number }}</code></p>
+                    </div>
+                    <button 
+                        id="logoutBtn"
+                        class="bg-red-500/20 hover:bg-red-500/30 text-white px-6 py-2 rounded-lg border border-red-500/50 transition-colors"
+                    >
+                        Logout
+                    </button>
+                </div>
+            </div>
+        </header>
 
-    function readSlice(start) {
-        const slice = file.slice(start, start + chunkSize);
-        reader.readAsArrayBuffer(slice);
-    }
+        <!-- Upload Section -->
+        <section class="card rounded-2xl shadow-2xl p-6 mb-8 border border-white/20">
+            <h2 class="text-2xl font-semibold text-white mb-4">Upload File</h2>
+            
+            <div class="space-y-4">
+                <!-- Encryption Key Section -->
+                <div class="bg-white/5 rounded-lg p-4 border border-white/10">
+                    <label class="block text-white/80 text-sm font-medium mb-2">
+                        Encryption Key
+                    </label>
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <input 
+                            type="file" 
+                            id="keyFileInput" 
+                            accept=".key"
+                            class="hidden"
+                        >
+                        <button 
+                            id="selectKeyBtn"
+                            class="bg-blue-500/20 hover:bg-blue-500/30 text-white px-4 py-2 rounded-lg border border-blue-500/50 transition-colors text-sm"
+                        >
+                            Select Key File
+                        </button>
+                        <span id="keyFileName" class="text-white/60 text-sm self-center">No key file selected</span>
+                        <button 
+                            id="downloadKeyBtn"
+                            class="bg-green-500/20 hover:bg-green-500/30 text-white px-4 py-2 rounded-lg border border-green-500/50 transition-colors text-sm ml-auto"
+                        >
+                            Download Key
+                        </button>
+                    </div>
+                    <p class="text-white/50 text-xs mt-2">
+                        Upload your encryption key file to enable file uploads and downloads.
+                    </p>
+                </div>
 
-    readSlice(0);
-});
+                <!-- File Upload Section -->
+                <div class="bg-white/5 rounded-lg p-4 border border-white/10">
+                    <label class="block text-white/80 text-sm font-medium mb-2">
+                        Select File to Upload
+                    </label>
+                    <div class="flex flex-col gap-3">
+                        <input 
+                            type="file" 
+                            id="fileInput" 
+                            class="hidden"
+                        >
+                        <div class="flex gap-3">
+                            <button 
+                                id="selectFileBtn"
+                                class="bg-purple-500/20 hover:bg-purple-500/30 text-white px-4 py-2 rounded-lg border border-purple-500/50 transition-colors"
+                            >
+                                Choose File
+                            </button>
+                            <button 
+                                id="uploadBtn"
+                                class="bg-green-500/20 hover:bg-green-500/30 text-white px-6 py-2 rounded-lg border border-green-500/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled
+                            >
+                                Upload
+                            </button>
+                        </div>
+                        <span id="fileName" class="text-white/60 text-sm">No file selected</span>
+                    </div>
 
-    fetch('/get-files') // Henter filene som brukeren har lastet opp
-        .then(response => response.json())
-        .then(files => {
-            const fileContainer = document.getElementById('fileContainer');
-            files.forEach(file => {
-                const fileBox = document.createElement('div');
-                fileBox.textContent = `File name: ${file.name}, File size: ${file.size}`;
+                    <!-- Upload Progress -->
+                    <div id="uploadProgress" class="hidden mt-4">
+                        <div class="flex justify-between text-white/80 text-sm mb-2">
+                            <span>Uploading...</span>
+                            <span id="uploadPercent">0%</span>
+                        </div>
+                        <div class="w-full bg-white/10 rounded-full h-2">
+                            <div id="progressBar" class="progress-bar bg-green-500 h-2 rounded-full" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-                const downloadButton = document.createElement('button');
-                const deleteButton = document.createElement('button');
-                downloadButton.textContent = 'Download';
-                downloadButton.className = 'mr-4 border border-gray-300 rounded-lg p-3';
-                downloadButton.dataset.filename = file.name;
-                downloadButton.addEventListener('click', function() {
-                    const keyFile = localStorage.getItem('keyFile');
-                    const filename = this.dataset.filename;
-                    const formData = new FormData();
-                    formData.append('keyFile', keyFile);
-                    console.log("Filename: ", filename);  // Add this line
-                    fetch(`/download-file/${filename}`, {  // Append the filename to the URL
-                        method: 'POST',
-                        body: formData,
-                    })
-                        .then(response => {
-                            console.log("Server response: ", response);  // Add this line
-                            return response.blob();
-                        })
-                        .then(blob => {
-                            const url = window.URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = this.dataset.filename;
-                            document.body.appendChild(a);
-                            a.click();
-                            a.remove();
-                        });
-                });
-                deleteButton.textContent = 'Delete';
-                deleteButton.dataset.filename = file.name;
-                deleteButton.addEventListener('click', function() {
-                    window.location.href = `/delete-file/${this.dataset.filename}`;
-                });
+            <!-- Messages -->
+            <div id="uploadMessage" class="mt-4 hidden"></div>
+        </section>
 
-                fileBox.appendChild(downloadButton);
-                fileBox.appendChild(deleteButton);
-                fileContainer.appendChild(fileBox);
-            });
+        <!-- Files Section -->
+        <section class="card rounded-2xl shadow-2xl p-6 border border-white/20">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-2xl font-semibold text-white">Your Files</h2>
+                <button 
+                    id="refreshBtn"
+                    class="text-white/80 hover:text-white transition-colors"
+                    aria-label="Refresh files"
+                >
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <div id="filesContainer" class="space-y-3">
+                <div class="text-center text-white/60 py-8">
+                    <div id="loadingSpinner" class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                    <p class="mt-2">Loading files...</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        let encryptionKey = null;
+
+        // Utility functions
+        function showMessage(elementId, message, type = 'error') {
+            const element = document.getElementById(elementId);
+            element.className = `mt-4 rounded-lg p-4 border ${
+                type === 'error' 
+                    ? 'bg-red-500/20 border-red-500/50 text-red-200' 
+                    : 'bg-green-500/20 border-green-500/50 text-green-200'
+            }`;
+            element.textContent = message;
+            element.classList.remove('hidden');
+            setTimeout(() => element.classList.add('hidden'), 5000);
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        // Encryption Key Handling
+        document.getElementById('selectKeyBtn').addEventListener('click', () => {
+            document.getElementById('keyFileInput').click();
         });
-</script>
-<footer style="text-align: center;">
-    <p>Made with spaghetti code</p>
-</footer>
+
+        document.getElementById('keyFileInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            try {
+                const text = await file.text();
+                encryptionKey = text.trim();
+                document.getElementById('keyFileName').textContent = file.name;
+                document.getElementById('uploadBtn').disabled = false;
+                showMessage('uploadMessage', 'Encryption key loaded successfully', 'success');
+            } catch (error) {
+                showMessage('uploadMessage', 'Failed to read key file', 'error');
+                console.error('Error reading key file:', error);
+            }
+        });
+
+        document.getElementById('downloadKeyBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/download-key', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'encryption.key';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                    showMessage('uploadMessage', 'Key file downloaded', 'success');
+                } else {
+                    const data = await response.json();
+                    showMessage('uploadMessage', data.error || 'Failed to download key', 'error');
+                }
+            } catch (error) {
+                showMessage('uploadMessage', 'Network error', 'error');
+                console.error('Error:', error);
+            }
+        });
+
+        // File Upload
+        document.getElementById('selectFileBtn').addEventListener('click', () => {
+            document.getElementById('fileInput').click();
+        });
+
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                document.getElementById('fileName').textContent = `${file.name} (${formatFileSize(file.size)})`;
+            }
+        });
+
+        async function computeFileHash(file) {
+            const reader = file.stream().getReader();
+            const hashBuffer = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        document.getElementById('uploadBtn').addEventListener('click', async () => {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                showMessage('uploadMessage', 'Please select a file', 'error');
+                return;
+            }
+
+            if (!encryptionKey) {
+                showMessage('uploadMessage', 'Please select your encryption key file', 'error');
+                return;
+            }
+
+            const uploadBtn = document.getElementById('uploadBtn');
+            uploadBtn.disabled = true;
+
+            try {
+                // Show progress
+                document.getElementById('uploadProgress').classList.remove('hidden');
+                document.getElementById('uploadPercent').textContent = '0%';
+                document.getElementById('progressBar').style.width = '0%';
+
+                // Compute hash
+                const fileHash = await computeFileHash(file);
+
+                // Upload file
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('file_hash', fileHash);
+
+                const xhr = new XMLHttpRequest();
+
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        const percentComplete = (e.loaded / e.total) * 100;
+                        document.getElementById('uploadPercent').textContent = Math.round(percentComplete) + '%';
+                        document.getElementById('progressBar').style.width = percentComplete + '%';
+                    }
+                });
+
+                xhr.addEventListener('load', () => {
+                    if (xhr.status === 200) {
+                        showMessage('uploadMessage', 'File uploaded successfully', 'success');
+                        document.getElementById('uploadProgress').classList.add('hidden');
+                        fileInput.value = '';
+                        document.getElementById('fileName').textContent = 'No file selected';
+                        loadFiles();
+                    } else {
+                        const data = JSON.parse(xhr.responseText);
+                        showMessage('uploadMessage', data.error || 'Upload failed', 'error');
+                        document.getElementById('uploadProgress').classList.add('hidden');
+                    }
+                    uploadBtn.disabled = false;
+                });
+
+                xhr.addEventListener('error', () => {
+                    showMessage('uploadMessage', 'Network error during upload', 'error');
+                    document.getElementById('uploadProgress').classList.add('hidden');
+                    uploadBtn.disabled = false;
+                });
+
+                xhr.open('POST', '/api/upload');
+                xhr.send(formData);
+
+            } catch (error) {
+                showMessage('uploadMessage', 'Failed to upload file', 'error');
+                console.error('Error:', error);
+                uploadBtn.disabled = false;
+                document.getElementById('uploadProgress').classList.add('hidden');
+            }
+        });
+
+        // Load Files
+        async function loadFiles() {
+            const container = document.getElementById('filesContainer');
+            container.innerHTML = '<div class="text-center text-white/60 py-8"><div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div><p class="mt-2">Loading files...</p></div>';
+
+            try {
+                const response = await fetch('/api/files', {
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (data.success && data.files.length > 0) {
+                    container.innerHTML = data.files.map(file => `
+                        <div class="file-item bg-white/5 rounded-lg p-4 border border-white/10">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div class="flex-1">
+                                    <h3 class="text-white font-semibold">${file.name}</h3>
+                                    <p class="text-white/60 text-sm">${formatFileSize(file.size_bytes)}</p>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button 
+                                        onclick="downloadFile('${file.name}')" 
+                                        class="bg-blue-500/20 hover:bg-blue-500/30 text-white px-4 py-2 rounded-lg border border-blue-500/50 transition-colors text-sm"
+                                    >
+                                        Download
+                                    </button>
+                                    <button 
+                                        onclick="deleteFile('${file.name}')" 
+                                        class="bg-red-500/20 hover:bg-red-500/30 text-white px-4 py-2 rounded-lg border border-red-500/50 transition-colors text-sm"
+                                    >
+                                        Delete
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = '<div class="text-center text-white/60 py-8"><p>No files uploaded yet</p></div>';
+                }
+            } catch (error) {
+                container.innerHTML = '<div class="text-center text-red-300 py-8"><p>Failed to load files</p></div>';
+                console.error('Error:', error);
+            }
+        }
+
+        // Download File
+        window.downloadFile = async function(filename) {
+            if (!encryptionKey) {
+                showMessage('uploadMessage', 'Please select your encryption key file first', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/download/${encodeURIComponent(filename)}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ encryption_key: encryptionKey })
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                    showMessage('uploadMessage', 'File downloaded successfully', 'success');
+                } else {
+                    const data = await response.json();
+                    showMessage('uploadMessage', data.error || 'Download failed', 'error');
+                }
+            } catch (error) {
+                showMessage('uploadMessage', 'Network error', 'error');
+                console.error('Error:', error);
+            }
+        };
+
+        // Delete File
+        window.deleteFile = async function(filename) {
+            if (!confirm(`Are you sure you want to delete "${filename}"?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/delete/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('uploadMessage', 'File deleted successfully', 'success');
+                    loadFiles();
+                } else {
+                    showMessage('uploadMessage', data.error || 'Delete failed', 'error');
+                }
+            } catch (error) {
+                showMessage('uploadMessage', 'Network error', 'error');
+                console.error('Error:', error);
+            }
+        };
+
+        // Refresh Files
+        document.getElementById('refreshBtn').addEventListener('click', loadFiles);
+
+        // Logout
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            try {
+                await fetch('/api/logout', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                window.location.href = '/';
+            } catch (error) {
+                console.error('Error:', error);
+                window.location.href = '/';
+            }
+        });
+
+        // Load files on page load
+        loadFiles();
+    </script>
+</body>
 </html>
