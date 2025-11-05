@@ -175,6 +175,21 @@
             return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
         }
 
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function escapeJs(text) {
+            return String(text)
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/\n/g, '\\n')
+                .replace(/\r/g, '\\r')
+                .replace(/\t/g, '\\t');
+        }
+
         // Encryption Key Handling
         document.getElementById('selectKeyBtn').addEventListener('click', () => {
             document.getElementById('keyFileInput').click();
@@ -333,18 +348,18 @@
                         <div class="file-item bg-white/5 rounded-lg p-4 border border-white/10">
                             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                 <div class="flex-1">
-                                    <h3 class="text-white font-semibold">${file.name}</h3>
+                                    <h3 class="text-white font-semibold">${escapeHtml(file.name)}</h3>
                                     <p class="text-white/60 text-sm">${formatFileSize(file.size_bytes)}</p>
                                 </div>
                                 <div class="flex gap-2">
                                     <button 
-                                        onclick="downloadFile('${file.name}')" 
+                                        onclick="downloadFile('${escapeJs(file.name)}')" 
                                         class="bg-blue-500/20 hover:bg-blue-500/30 text-white px-4 py-2 rounded-lg border border-blue-500/50 transition-colors text-sm"
                                     >
                                         Download
                                     </button>
                                     <button 
-                                        onclick="deleteFile('${file.name}')" 
+                                        onclick="deleteFile('${escapeJs(file.name)}')" 
                                         class="bg-red-500/20 hover:bg-red-500/30 text-white px-4 py-2 rounded-lg border border-red-500/50 transition-colors text-sm"
                                     >
                                         Delete
