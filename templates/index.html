@@ -1,53 +1,231 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Anonymous File Hosting</title>
-    <link rel="stylesheet" href="../static/css/output.css">
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Secure anonymous file hosting service">
+    <title>Anonymous File Hosting - Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card {
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .input-focus:focus {
+            outline: none;
+            ring: 2px;
+            ring-color: #667eea;
+        }
+    </style>
 </head>
-<body class="bg-gray-800 text-white">
-    <button id="myButton" class="mr-4 border border-gray-300 rounded-lg p-3">Generate Account</button>
-    <p id="accountNumber"></p>
-    <br>
-    <h1>Log in to existing account</h1>
-    <input type="text" id="existingNumber" placeholder="Account Number" style="color: black;">
-    <button id="loginExisting" class="mr-4 border border-gray-300 rounded-lg p-3" onclick="window.location.href='dashboard'; localStorage.removeItem('keyFile');">Login</button>
-    <a href="/dashboard" class="mr-4 border border-gray-300 rounded-lg p-3">Click here to go to your dashboard</a>
+<body class="gradient-bg min-h-screen flex items-center justify-center p-4">
+    <div class="card rounded-2xl shadow-2xl p-8 md:p-12 max-w-md w-full border border-white/20">
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-white mb-2">Anonymous File Hosting</h1>
+            <p class="text-white/80">Secure, encrypted file storage</p>
+        </div>
+
+        <!-- Create Account Section -->
+        <div class="mb-8">
+            <h2 class="text-xl font-semibold text-white mb-4">Create New Account</h2>
+            <button 
+                id="createAccountBtn" 
+                class="w-full bg-white text-purple-600 font-semibold py-3 px-6 rounded-lg hover:bg-gray-100 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                <span id="createAccountText">Generate Account</span>
+                <span id="createAccountSpinner" class="hidden">Creating...</span>
+            </button>
+            <div id="accountDisplay" class="mt-4 hidden">
+                <div class="bg-white/10 rounded-lg p-4 border border-white/20">
+                    <p class="text-white/80 text-sm mb-2">Your account number:</p>
+                    <div class="flex items-center justify-between">
+                        <code id="accountNumber" class="text-white font-mono text-lg font-bold"></code>
+                        <button 
+                            id="copyAccountBtn" 
+                            class="text-white hover:text-gray-200 transition-colors"
+                            aria-label="Copy account number"
+                        >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="text-white/60 text-xs mt-2">Save this number securely. You'll need it to access your files.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="relative my-8">
+            <div class="absolute inset-0 flex items-center">
+                <div class="w-full border-t border-white/20"></div>
+            </div>
+            <div class="relative flex justify-center text-sm">
+                <span class="px-4 bg-transparent text-white/60">or</span>
+            </div>
+        </div>
+
+        <!-- Login Section -->
+        <div>
+            <h2 class="text-xl font-semibold text-white mb-4">Login to Existing Account</h2>
+            <form id="loginForm" class="space-y-4">
+                <div>
+                    <label for="accountNumberInput" class="block text-white/80 text-sm font-medium mb-2">
+                        Account Number
+                    </label>
+                    <input 
+                        type="text" 
+                        id="accountNumberInput" 
+                        name="account_number"
+                        placeholder="Enter your account number"
+                        class="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 input-focus focus:bg-white/15 transition-colors"
+                        required
+                        autocomplete="off"
+                        aria-label="Account number"
+                    >
+                </div>
+                <button 
+                    type="submit" 
+                    id="loginBtn"
+                    class="w-full bg-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:bg-purple-700 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <span id="loginText">Login</span>
+                    <span id="loginSpinner" class="hidden">Logging in...</span>
+                </button>
+            </form>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorMessage" class="mt-4 hidden bg-red-500/20 border border-red-500/50 rounded-lg p-4">
+            <p id="errorText" class="text-red-200 text-sm"></p>
+        </div>
+
+        <!-- Success Message -->
+        <div id="successMessage" class="mt-4 hidden bg-green-500/20 border border-green-500/50 rounded-lg p-4">
+            <p id="successText" class="text-green-200 text-sm"></p>
+        </div>
+    </div>
+
     <script>
-    $(document).ready(function(){
-        $("#myButton").click(function(){
-            $.ajax({
-                url: "/button-click",
-                type: "get",
-                success: function(response) {
-                    $("#accountNumber").html(response);
-                },
-                error: function(xhr) {
-                    // handle error
+        // Utility functions
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            const errorText = document.getElementById('errorText');
+            errorText.textContent = message;
+            errorDiv.classList.remove('hidden');
+            setTimeout(() => errorDiv.classList.add('hidden'), 5000);
+        }
+
+        function showSuccess(message) {
+            const successDiv = document.getElementById('successMessage');
+            const successText = document.getElementById('successText');
+            successText.textContent = message;
+            successDiv.classList.remove('hidden');
+            setTimeout(() => successDiv.classList.add('hidden'), 5000);
+        }
+
+        function setLoading(buttonId, textId, spinnerId, isLoading) {
+            const button = document.getElementById(buttonId);
+            const text = document.getElementById(textId);
+            const spinner = document.getElementById(spinnerId);
+            
+            if (isLoading) {
+                button.disabled = true;
+                text.classList.add('hidden');
+                spinner.classList.remove('hidden');
+            } else {
+                button.disabled = false;
+                text.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        }
+
+        // Create Account
+        document.getElementById('createAccountBtn').addEventListener('click', async () => {
+            setLoading('createAccountBtn', 'createAccountText', 'createAccountSpinner', true);
+            
+            try {
+                const response = await fetch('/api/create-account', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    document.getElementById('accountNumber').textContent = data.account_number;
+                    document.getElementById('accountDisplay').classList.remove('hidden');
+                    showSuccess('Account created successfully! Redirecting to dashboard...');
+                    
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 1500);
+                } else {
+                    showError(data.error || 'Failed to create account');
                 }
+            } catch (error) {
+                showError('Network error. Please try again.');
+                console.error('Error:', error);
+            } finally {
+                setLoading('createAccountBtn', 'createAccountText', 'createAccountSpinner', false);
+            }
+        });
+
+        // Copy Account Number
+        document.getElementById('copyAccountBtn')?.addEventListener('click', () => {
+            const accountNumber = document.getElementById('accountNumber').textContent;
+            navigator.clipboard.writeText(accountNumber).then(() => {
+                showSuccess('Account number copied to clipboard!');
+            }).catch(() => {
+                showError('Failed to copy account number');
             });
         });
-        $("#loginExisting").click(function(){
-            $.ajax({
-                url: "/login-existing",
-                type: "post",
-                contentType: "application/json",
-                data: JSON.stringify({
-                    accountNumber: $("#existingNumber").val()
-                }),
-                success: function(response) {
-                    if(response.message) {
-                        alert(response.message + ". Number: " + response.number);
-                    } else if(response.error) {
-                        alert(response.error);
-                    }
-                },
-                error: function(xhr) {
-                    response = JSON.parse(xhr.responseText);
+
+        // Login Form
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const accountNumber = document.getElementById('accountNumberInput').value.trim();
+            
+            if (!accountNumber) {
+                showError('Please enter your account number');
+                return;
+            }
+
+            setLoading('loginBtn', 'loginText', 'loginSpinner', true);
+
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ account_number: accountNumber })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    showSuccess('Login successful! Redirecting...');
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 1000);
+                } else {
+                    showError(data.error || 'Login failed');
                 }
-            });
+            } catch (error) {
+                showError('Network error. Please try again.');
+                console.error('Error:', error);
+            } finally {
+                setLoading('loginBtn', 'loginText', 'loginSpinner', false);
+            }
         });
-    });
     </script>
 </body>
 </html>
