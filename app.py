@@ -15,8 +15,7 @@ from flask import Flask, jsonify, render_template, request, make_response, send_
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
 from cryptography.fernet import Fernet
-import pymongo
-from pymongo.errors import ConnectionFailure, DuplicateKeyError
+from db_adapter import create_database_adapter
 
 # Configure logging
 logging.basicConfig(
@@ -34,31 +33,16 @@ app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
-# MongoDB configuration
-MONGO_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/')
-MONGO_DB_NAME = os.environ.get('MONGO_DB_NAME', 'filehosting')
-MONGO_COLLECTION_NAME = os.environ.get('MONGO_COLLECTION_NAME', 'accounts')
-
 # Data directory
 DATA_DIR = Path(os.environ.get('DATA_DIR', './data'))
 DATA_DIR.mkdir(exist_ok=True)
 
-# Initialize MongoDB connection pool
+# Initialize database adapter (MongoDB or SQLite)
 try:
-    mongo_client = pymongo.MongoClient(
-        MONGO_URI,
-        serverSelectionTimeoutMS=5000,
-        maxPoolSize=50
-    )
-    # Test connection
-    mongo_client.admin.command('ping')
-    db = mongo_client[MONGO_DB_NAME]
-    collection = db[MONGO_COLLECTION_NAME]
-    # Create index on account number for faster lookups
-    collection.create_index("account_number", unique=True)
-    logger.info("Connected to MongoDB successfully")
-except ConnectionFailure as e:
-    logger.error(f"Failed to connect to MongoDB: {e}")
+    db_adapter = create_database_adapter()
+    logger.info(f"Database initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize database: {e}")
     raise
 
 
@@ -72,7 +56,7 @@ def require_auth(f):
         
         # Verify account exists
         try:
-            account = collection.find_one({"account_number": account_number})
+            account = db_adapter.find_one(account_number)
             if not account:
                 session.clear()
                 return jsonify({"error": "Account not found"}), 401
@@ -149,7 +133,7 @@ def create_account():
             try:
                 # Insert account into database
                 doc = {"account_number": account_number, "created_at": datetime.utcnow()}
-                collection.insert_one(doc)
+                db_adapter.insert_one(doc)
                 
                 # Generate encryption key
                 generate_encryption_key(account_number)
@@ -166,9 +150,26 @@ def create_account():
                     "message": "Account created successfully"
                 }), 201
                 
-            except DuplicateKeyError:
-                # Account number collision, try again
-                continue
+            except ValueError as e:
+                # SQLite raises ValueError for duplicate keys
+                error_msg = str(e).lower()
+                if 'already exists' in error_msg:
+                    # Account number collision, try again
+                    continue
+                else:
+                    # Some other ValueError, re-raise it
+                    raise
+            except Exception as e:
+                # MongoDB raises DuplicateKeyError (which is an Exception)
+                # Check if it's a duplicate key error
+                error_type = type(e).__name__
+                error_msg = str(e).lower()
+                if error_type == 'DuplicateKeyError' or 'duplicate' in error_msg or 'unique' in error_msg:
+                    # Account number collision, try again
+                    continue
+                else:
+                    # Some other error, re-raise it
+                    raise
         
         return jsonify({"error": "Failed to create account. Please try again."}), 500
         
@@ -195,7 +196,7 @@ def login():
             return jsonify({"error": "Invalid account number format"}), 400
         
         # Verify account exists
-        account = collection.find_one({"account_number": account_number})
+        account = db_adapter.find_one(account_number)
         if not account:
             return jsonify({"error": "Account not found"}), 404
         
@@ -230,7 +231,7 @@ def dashboard():
         return redirect('/')
     
     # Verify account exists
-    account = collection.find_one({"account_number": account_number})
+    account = db_adapter.find_one(account_number)
     if not account:
         session.clear()
         return redirect('/')

@@ -46,3 +46,24 @@ Innlogging systemet er basert på et konto nummer system, som bruker en modul ti
 Fil-opplasting systemet bruker fil hashing til og verifisere at filen du lastet opp ikke blir endret etter opplasting, for eksempel til og hindre korrupsjon, filen blir delt opp i 32MB chunks, dette gjør det mulig og sjekke filer som er over 2GB i størrelse (2GB er limit i javascript), og det reduserer hvor mye RAM som blir brukt opp til og sjekke filen, fordi den deles opp og sjekker hver del og ikke hele filen på en gang, etter filen har blit sjekket, blir den sendt til serveren, og serveren sjekker filen igjen og verifiserer at filen som er lastet op matcher filen som serveren har fått, og deretter blir filen enkryptert med en enkrypsjon nøkkel som kun brukeren har tilgang til.
 #### Fil-nedlasting
 Når brukeren velger og laste ned en fil, blir enkrypsjons nøkkelen sendt til serveren fra localStorage i en request, som serveren bruker til og dekryptere filen, og deretter sende den tilbake til brukeren sin nettleser, serveren lagrer ikke den dekrypterte filen eller enkrypsjons nøkkelen.
+
+## Database Konfigurasjon
+Applikasjonen støtter både MongoDB og SQLite som database. Du kan velge hvilken database som skal brukes ved å sette miljøvariabelen `DATABASE_TYPE`.
+
+### MongoDB (Standard)
+MongoDB er standard databasen. For å bruke MongoDB, sett:
+```bash
+export DATABASE_TYPE=mongodb
+export MONGO_URI=mongodb://localhost:27017/
+export MONGO_DB_NAME=filehosting
+export MONGO_COLLECTION_NAME=accounts
+```
+
+### SQLite
+For å bruke SQLite (intern server database), sett:
+```bash
+export DATABASE_TYPE=sqlite
+export SQLITE_DB_PATH=./data/filehosting.db
+```
+
+SQLite er en lokal filbasert database som ikke krever en separat databaseserver. Dette gjør det enklere å sette opp og kjøre applikasjonen uten å installere MongoDB.
