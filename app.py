@@ -11,15 +11,7 @@ from pathlib import Path
 from datetime import timedelta, datetime
 from functools import wraps
 
-from flask import Flask, jsonify, render_template, request, make_response, send_file, session, redirect
-from urllib.parse import quote
-from werkzeug.exceptions import RequestEntityTooLarge
-from werkzeug.http import quote_header_value
-from cryptography.fernet import Fernet, InvalidToken
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.backends import default_backend
-import base64
+from flask import Flask, jsonify, render_template, request, make_response, session, redirect
 from db_adapter import create_database_adapter
 
 # Configure logging
@@ -73,88 +65,26 @@ def require_auth(f):
     return decorated_function
 
 
-def get_user_data_dir(account_number):
-    """Get the data directory for a user account."""
-    user_dir = DATA_DIR / str(account_number)
-    user_dir.mkdir(exist_ok=True)
-    return user_dir
+def get_anonymous_storage_dir():
+    """Get the anonymous storage directory for all files.
+    Files are stored by content hash, not user ID, for security.
+    """
+    storage_dir = DATA_DIR / 'files'
+    storage_dir.mkdir(exist_ok=True)
+    return storage_dir
 
 
-def derive_encryption_key(account_number):
-    """Derive encryption key from account number using PBKDF2."""
-    # Convert account number to bytes
-    account_bytes = str(account_number).encode('utf-8')
-    
-    # Use PBKDF2 to derive a 32-byte key
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=b'secure_file_hosting_salt',  # Fixed salt for deterministic key derivation
-        iterations=100000,
-        backend=default_backend()
-    )
-    
-    # Derive key and encode as base64 for Fernet
-    key = base64.urlsafe_b64encode(kdf.derive(account_bytes))
-    return key
+def get_file_storage_path(file_hash):
+    """Get storage path for a file based on its content hash.
+    Uses sharding for better filesystem performance.
+    """
+    storage_dir = get_anonymous_storage_dir()
+    # Use first 2 characters of hash for sharding
+    shard_dir = storage_dir / file_hash[:2]
+    shard_dir.mkdir(exist_ok=True)
+    return shard_dir / file_hash
 
 
-def get_user_fernet(account_number):
-    """Get a Fernet instance for the specified account."""
-    key = derive_encryption_key(account_number)
-    return Fernet(key)
-
-
-def is_valid_plain_filename(filename):
-    """Validate that a filename is safe to use without altering user-provided characters."""
-    if not isinstance(filename, str):
-        return False
-    if filename.strip() == '':
-        return False
-    if filename in {'.', '..'}:
-        return False
-    if '\x00' in filename:
-        return False
-    if '/' in filename or '\\' in filename:
-        return False
-    return True
-
-
-def build_content_disposition(filename):
-    """Build a Content-Disposition header value that preserves the original filename."""
-    disposition = f"attachment; filename={quote_header_value(filename)}"
-    try:
-        filename.encode('ascii')
-    except UnicodeEncodeError:
-        disposition += f"; filename*=UTF-8''{quote(filename)}"
-    return disposition
-
-
-def encrypt_filename(filename, fernet):
-    """Encrypt a filename using the provided Fernet instance."""
-    return fernet.encrypt(filename.encode('utf-8')).decode('utf-8')
-
-
-def decrypt_filename(encrypted_filename, fernet):
-    """Decrypt an encrypted filename using the provided Fernet instance."""
-    return fernet.decrypt(encrypted_filename.encode('utf-8')).decode('utf-8')
-
-
-def resolve_user_file_path(user_dir, target_filename, fernet):
-    """Resolve the filesystem path for a user's file by its plaintext filename."""
-    for file_path in user_dir.iterdir():
-        if not file_path.is_file():
-            continue
-
-        try:
-            decrypted_name = decrypt_filename(file_path.name, fernet)
-            if decrypted_name == target_filename:
-                return file_path
-        except InvalidToken:
-            if file_path.name == target_filename:
-                return file_path
-
-    return None
 
 
 @app.errorhandler(413)
@@ -292,29 +222,42 @@ def dashboard():
     return render_template('dashboard.html', account_number=account_number)
 
 
-@app.route('/api/files', methods=['GET'])
+@app.route('/api/files', methods=['POST'])
 @require_auth
 def get_files(account_number):
-    """Get list of encrypted files for the authenticated user.
-    Returns encrypted filenames - decryption happens client-side.
+    """Get list of files for the authenticated user.
+    Client sends encrypted file index, server validates ownership and returns file metadata.
     """
     try:
-        user_dir = get_user_data_dir(account_number)
-        files = []
+        data = request.get_json()
+        if not data or 'encrypted_file_index' not in data:
+            return jsonify({"error": "Encrypted file index required"}), 400
         
-        for file_path in user_dir.iterdir():
-            if file_path.is_file():
-                size_bytes = file_path.stat().st_size
-                size_mb = round(size_bytes / (1024 * 1024), 2)
+        encrypted_index = data['encrypted_file_index']
+        
+        # encrypted_index is a list of {file_hash, encrypted_metadata}
+        # Server validates that these files exist and returns their current sizes
+        validated_files = []
+        
+        for file_entry in encrypted_index:
+            file_hash = file_entry.get('file_hash')
+            if not file_hash:
+                continue
                 
-                # Return encrypted filename - client will decrypt it
-                files.append({
-                    'encrypted_filename': file_path.name,  # Already encrypted by client
-                    'size_mb': size_mb,
-                    'size_bytes': size_bytes
-                })
+            # Verify file exists in storage
+            file_path = get_file_storage_path(file_hash)
+            if file_path.exists() and file_path.is_file():
+                # Verify ownership in database
+                ownership = db_adapter.find_file_ownership(account_number, file_hash)
+                if ownership:
+                    size_bytes = file_path.stat().st_size
+                    validated_files.append({
+                        'file_hash': file_hash,
+                        'encrypted_metadata': file_entry.get('encrypted_metadata', ''),
+                        'size_bytes': size_bytes
+                    })
         
-        return jsonify({"success": True, "files": files}), 200
+        return jsonify({"success": True, "files": validated_files}), 200
         
     except Exception as e:
         logger.error(f"Error getting files: {e}")
@@ -325,7 +268,7 @@ def get_files(account_number):
 @require_auth
 def upload_file(account_number):
     """Upload an encrypted file for the authenticated user.
-    The file is already encrypted client-side, so we just store it as-is.
+    Files are stored anonymously by content hash, not by user ID.
     """
     try:
         if 'file' not in request.files:
@@ -340,10 +283,10 @@ def upload_file(account_number):
         if not client_hash:
             return jsonify({"error": "File hash is required"}), 400
         
-        # Get encrypted filename from client
-        encrypted_filename = request.form.get('encrypted_filename')
-        if not encrypted_filename:
-            return jsonify({"error": "Encrypted filename is required"}), 400
+        # Get encrypted metadata from client (filename, etc.)
+        encrypted_metadata = request.form.get('encrypted_metadata')
+        if not encrypted_metadata:
+            return jsonify({"error": "Encrypted metadata is required"}), 400
         
         # Read encrypted file content (already encrypted client-side)
         encrypted_content = file.read()
@@ -353,30 +296,37 @@ def upload_file(account_number):
         if client_hash != server_hash:
             return jsonify({"error": "File integrity check failed"}), 400
         
-        # Save encrypted file using encrypted filename
-        user_dir = get_user_data_dir(account_number)
+        # Store file anonymously by content hash
+        file_path = get_file_storage_path(server_hash)
         
-        # Use encrypted filename directly (base64 encoded)
-        # Sanitize to prevent path traversal
-        safe_encrypted_filename = encrypted_filename.replace('/', '_').replace('\\', '_').replace('..', '__')
-        if len(safe_encrypted_filename) > 500:  # Reasonable limit
-            return jsonify({"error": "Encrypted filename too long"}), 400
+        # Check if file already exists (deduplication)
+        file_already_exists = file_path.exists()
         
-        file_path = user_dir / safe_encrypted_filename
+        if not file_already_exists:
+            # Write encrypted content to anonymous storage
+            with open(file_path, 'wb') as f:
+                f.write(encrypted_content)
         
-        # Remove any existing file with the same encrypted filename
-        if file_path.exists():
-            file_path.unlink()
+        # Record ownership in database (encrypted metadata stored)
+        try:
+            db_adapter.add_file_ownership(
+                account_number=account_number,
+                file_hash=server_hash,
+                encrypted_metadata=encrypted_metadata,
+                file_size=len(encrypted_content)
+            )
+        except Exception as e:
+            # If ownership record fails and file is new, clean up
+            if not file_already_exists:
+                file_path.unlink()
+            raise e
         
-        # Write encrypted content directly (no server-side encryption)
-        with open(file_path, 'wb') as f:
-            f.write(encrypted_content)
-        
-        logger.info(f"Encrypted file uploaded for account {account_number}")
+        logger.info(f"File uploaded: hash={server_hash[:8]}..., dedup={file_already_exists}")
         
         return jsonify({
             "success": True,
-            "message": "File uploaded successfully"
+            "message": "File uploaded successfully",
+            "file_hash": server_hash
         }), 200
         
     except Exception as e:
@@ -384,23 +334,29 @@ def upload_file(account_number):
         return jsonify({"error": "Failed to upload file"}), 500
 
 
-@app.route('/api/download/<path:encrypted_filename>', methods=['POST'])
+@app.route('/api/download/<path:file_hash>', methods=['POST'])
 @require_auth
-def download_file(account_number, encrypted_filename):
+def download_file(account_number, file_hash):
     """Download an encrypted file for the authenticated user.
     Returns encrypted file data - decryption happens client-side.
     """
     try:
-        # Sanitize encrypted filename to prevent path traversal
-        safe_encrypted_filename = encrypted_filename.replace('..', '__').replace('/', '_').replace('\\', '_')
-        if len(safe_encrypted_filename) > 500:
-            return jsonify({"error": "Invalid filename"}), 400
+        # Validate file hash format (64 hex characters for SHA-256)
+        if not file_hash or len(file_hash) != 64 or not all(c in '0123456789abcdef' for c in file_hash):
+            return jsonify({"error": "Invalid file hash"}), 400
         
-        user_dir = get_user_data_dir(account_number)
-        file_path = user_dir / safe_encrypted_filename
-
+        # Verify user owns this file
+        ownership = db_adapter.find_file_ownership(account_number, file_hash)
+        if not ownership:
+            return jsonify({"error": "File not found or access denied"}), 404
+        
+        # Get file from anonymous storage
+        file_path = get_file_storage_path(file_hash)
+        
         if not file_path.exists() or not file_path.is_file():
-            return jsonify({"error": "File not found"}), 404
+            # File ownership exists but file is missing - data integrity issue
+            logger.error(f"File missing from storage: {file_hash}")
+            return jsonify({"error": "File data not found"}), 404
         
         # Read encrypted file (no server-side decryption)
         try:
@@ -413,7 +369,6 @@ def download_file(account_number, encrypted_filename):
         # Send encrypted file as-is (client will decrypt)
         response = make_response(encrypted_content)
         response.headers['Content-Type'] = 'application/octet-stream'
-        # Don't set Content-Disposition with original filename - client will handle that
         
         return response
         
@@ -424,25 +379,36 @@ def download_file(account_number, encrypted_filename):
 
 
 
-@app.route('/api/delete/<path:encrypted_filename>', methods=['DELETE'])
+@app.route('/api/delete/<path:file_hash>', methods=['DELETE'])
 @require_auth
-def delete_file(account_number, encrypted_filename):
-    """Delete an encrypted file for the authenticated user."""
+def delete_file(account_number, file_hash):
+    """Delete file ownership for the authenticated user.
+    File is only removed from storage if no other users reference it.
+    """
     try:
-        # Sanitize encrypted filename to prevent path traversal
-        safe_encrypted_filename = encrypted_filename.replace('..', '__').replace('/', '_').replace('\\', '_')
-        if len(safe_encrypted_filename) > 500:
-            return jsonify({"error": "Invalid filename"}), 400
+        # Validate file hash format
+        if not file_hash or len(file_hash) != 64 or not all(c in '0123456789abcdef' for c in file_hash):
+            return jsonify({"error": "Invalid file hash"}), 400
         
-        user_dir = get_user_data_dir(account_number)
-        file_path = user_dir / safe_encrypted_filename
-
-        if not file_path.exists():
+        # Verify user owns this file
+        ownership = db_adapter.find_file_ownership(account_number, file_hash)
+        if not ownership:
             return jsonify({"error": "File not found"}), 404
         
-        file_path.unlink()
+        # Remove ownership record
+        db_adapter.remove_file_ownership(account_number, file_hash)
         
-        logger.info(f"Encrypted file deleted for account {account_number}")
+        # Check if any other users reference this file
+        other_owners = db_adapter.count_file_owners(file_hash)
+        
+        # If no other owners, delete the file from storage
+        if other_owners == 0:
+            file_path = get_file_storage_path(file_hash)
+            if file_path.exists():
+                file_path.unlink()
+                logger.info(f"File removed from storage: {file_hash[:8]}...")
+        
+        logger.info(f"File ownership deleted for account {account_number}")
         
         return jsonify({
             "success": True,
