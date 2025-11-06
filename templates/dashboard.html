@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="description" content="File hosting dashboard">
     <title>Dashboard - Anonymous File Hosting</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}">
@@ -65,6 +65,19 @@
         .fade-in {
             animation: fadeIn 0.5s ease-out;
         }
+        /* Ensure proper box-sizing and reset any browser zoom issues */
+        html {
+            font-size: 16px;
+            -webkit-text-size-adjust: 100%;
+        }
+        /* Fix icon sizes - Tailwind utilities not working */
+        svg.w-4 { width: 1rem !important; height: 1rem !important; }
+        svg.w-5 { width: 1.25rem !important; height: 1.25rem !important; }
+        svg.w-6 { width: 1.5rem !important; height: 1.5rem !important; }
+        svg.w-10 { width: 2.5rem !important; height: 2.5rem !important; }
+        svg.w-16 { width: 4rem !important; height: 4rem !important; }
+        /* Fix hidden class - ensure elements are actually hidden */
+        .hidden { display: none !important; }
     </style>
 </head>
 <body class="gradient-bg py-8 px-4">
