@@ -4,227 +4,148 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="description" content="File hosting dashboard">
-    <title>Dashboard - Anonymous File Hosting</title>
+    <title>VaultSphere &mdash; Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}">
-    <style>
-        .gradient-bg {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-        }
-        .card {
-            backdrop-filter: blur(10px);
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        .file-item {
-            transition: all 0.3s ease;
-        }
-        .file-item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-        }
-        .progress-bar {
-            transition: width 0.3s ease;
-        }
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            transition: all 0.3s ease;
-        }
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            transition: all 0.3s ease;
-        }
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.2);
-            transform: translateY(-1px);
-        }
-        .account-badge {
-            background: rgba(255, 255, 255, 0.15);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            font-family: 'Courier New', monospace;
-            font-weight: 600;
-            letter-spacing: 0.05em;
-        }
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        .fade-in {
-            animation: fadeIn 0.5s ease-out;
-        }
-        /* Ensure proper box-sizing and reset any browser zoom issues */
-        html {
-            font-size: 16px;
-            -webkit-text-size-adjust: 100%;
-        }
-        /* Fix icon sizes - Tailwind utilities not working */
-        svg.w-4 { width: 1rem !important; height: 1rem !important; }
-        svg.w-5 { width: 1.25rem !important; height: 1.25rem !important; }
-        svg.w-6 { width: 1.5rem !important; height: 1.5rem !important; }
-        svg.w-10 { width: 2.5rem !important; height: 2.5rem !important; }
-        svg.w-16 { width: 4rem !important; height: 4rem !important; }
-        /* Fix hidden class - ensure elements are actually hidden */
-        .hidden { display: none !important; }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<body class="gradient-bg py-8 px-4">
-    <div class="max-w-6xl mx-auto">
-        <!-- Header -->
-        <header class="mb-8 fade-in">
-            <div class="card rounded-2xl shadow-2xl p-6">
-                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                    <div>
-                        <h1 class="text-3xl md:text-4xl font-bold text-white mb-2">File Dashboard</h1>
-                        <div class="flex items-center gap-3 mt-2">
-                            <span class="text-white/80 text-sm">Your Account:</span>
-                            <span class="account-badge text-white">{{ account_number }}</span>
-                            <button 
-                                id="copyAccountBtn"
-                                class="text-white/60 hover:text-white transition-colors p-1"
-                                aria-label="Copy account number"
-                                title="Copy account number"
-                            >
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
-                                </svg>
-                            </button>
-                        </div>
+<body class="dashboard-body">
+    <main class="dashboard-wrapper">
+        <header class="dashboard-header glass-panel" aria-labelledby="dashboard-heading">
+            <div class="header-top">
+                <div class="brand-mark">
+                    <span>VaultSphere</span>
+                    <strong id="dashboard-heading">Encrypted workspace</strong>
+                </div>
+                <div class="header-actions">
+                    <div class="account-chip" aria-live="polite">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4.75 4.75h11.5a1.75 1.75 0 0 1 1.75 1.75v11.5a1.75 1.75 0 0 1-1.75 1.75H4.75A1.75 1.75 0 0 1 3 18V6.5A1.75 1.75 0 0 1 4.75 4.75Z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6.25 3H17.5A1.5 1.5 0 0 1 19 4.5V6" opacity="0.5" />
+                        </svg>
+                        <span id="accountChipNumber">{{ account_number }}</span>
+                        <button id="copyAccountBtn" class="icon-button" type="button" aria-label="Copy account number" title="Copy account number">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M16 8h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-2" />
+                            </svg>
+                        </button>
                     </div>
-                    <button 
-                        id="logoutBtn"
-                        class="btn-secondary text-white px-6 py-2.5 rounded-lg font-medium"
-                    >
-                        Logout
-                    </button>
+                    <button id="logoutBtn" class="btn btn-secondary" type="button">Log out</button>
+                </div>
+            </div>
+            <div class="header-bottom">
+                <p class="support-text">You&rsquo;re viewing fully encrypted files. Manage uploads, verify integrity, and stream downloads without exposing your identity.</p>
+                <div class="stats-grid">
+                    <article class="stat-card">
+                        <small>Total files</small>
+                        <strong id="totalFilesStat">0</strong>
+                        <span class="stat-trend" id="filesTrend">Freshly synced</span>
+                    </article>
+                    <article class="stat-card">
+                        <small>Storage secured</small>
+                        <strong id="storageUsedStat">0 B</strong>
+                        <span class="stat-trend">Encrypted at rest</span>
+                    </article>
+                    <article class="stat-card">
+                        <small>Integrity checks</small>
+                        <strong>SHA-256</strong>
+                        <span class="stat-trend">Client-verified</span>
+                    </article>
                 </div>
             </div>
         </header>
 
-        <!-- Upload Section -->
-        <section class="card rounded-2xl shadow-2xl p-6 mb-8 fade-in">
-            <h2 class="text-2xl font-semibold text-white mb-6 flex items-center gap-2">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
-                </svg>
-                Upload File
-            </h2>
-            
-            <div class="bg-white/5 rounded-xl p-6 border border-white/10">
-                <div class="flex flex-col gap-4">
-                    <div class="flex flex-col sm:flex-row gap-3">
-                        <input 
-                            type="file" 
-                            id="fileInput" 
-                            class="hidden"
-                        >
-                        <button 
-                            id="selectFileBtn"
-                            class="btn-secondary text-white px-6 py-3 rounded-lg font-medium flex-1 sm:flex-none"
-                        >
-                            <span class="flex items-center justify-center gap-2">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                                </svg>
-                                Choose File
-                            </span>
-                        </button>
-                        <button 
-                            id="uploadBtn"
-                            class="btn-primary text-white px-8 py-3 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:transform-none"
-                            disabled
-                        >
-                            <span id="uploadText">Upload</span>
+        <section class="glass-panel upload-section" aria-labelledby="upload-heading">
+            <div class="upload-stack">
+                <div class="section-heading">
+                    <h2 id="upload-heading">Upload encrypted files</h2>
+                    <div class="helper-row">
+                        <span>Drag &amp; drop or choose from your device &middot; up to 5GB</span>
+                    </div>
+                </div>
+
+                <input type="file" id="fileInput" class="hidden" />
+
+                <div class="upload-dropzone" role="group" aria-labelledby="upload-heading">
+                    <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 15a4 4 0 0 1 4-4h.167A4 4 0 0 1 11 5a4 4 0 0 1 3.833 2.667A3.5 3.5 0 0 1 21 10.5a3.5 3.5 0 0 1-3.5 3.5H17" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m12 12-3 3m3-3 3 3m-3-3v9" />
+                    </svg>
+                    <p id="fileName">No file selected</p>
+                    <div class="upload-actions">
+                        <button id="selectFileBtn" type="button" class="btn btn-secondary">Choose file</button>
+                        <button id="uploadBtn" type="button" class="btn btn-primary" disabled>
+                            <span id="uploadText">Upload &amp; encrypt</span>
                             <span id="uploadSpinner" class="hidden">Uploading...</span>
                         </button>
                     </div>
-                    <div class="flex items-center gap-2 text-white/70 text-sm">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
-                        <span id="fileName" class="text-white/60">No file selected</span>
-                    </div>
+                </div>
 
-                    <!-- Upload Progress -->
-                    <div id="uploadProgress" class="hidden mt-2">
-                        <div class="flex justify-between text-white/80 text-sm mb-2">
-                            <span class="flex items-center gap-2">
-                                <svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                                </svg>
-                                Uploading...
-                            </span>
-                            <span id="uploadPercent" class="font-semibold">0%</span>
-                        </div>
-                        <div class="w-full bg-white/10 rounded-full h-2.5 overflow-hidden">
-                            <div id="progressBar" class="progress-bar bg-gradient-to-r from-green-400 to-green-600 h-2.5 rounded-full" style="width: 0%"></div>
-                        </div>
+                <div id="uploadProgress" class="upload-progress-panel hidden" aria-live="polite">
+                    <div class="helper-row">
+                        <span>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="animate-spin" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M20 9a8 8 0 1 0 0 6" opacity="0.45" />
+                            </svg>
+                            Uploading...
+                        </span>
+                        <strong id="uploadPercent">0%</strong>
+                    </div>
+                    <div class="progress-track">
+                        <div id="progressBar" class="progress-bar" style="width: 0%;"></div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Messages -->
-            <div id="uploadMessage" class="mt-4 hidden"></div>
+                <div id="uploadMessage" class="toast-stack"></div>
+            </div>
         </section>
 
-        <!-- Files Section -->
-        <section class="card rounded-2xl shadow-2xl p-6 fade-in">
-            <div class="flex items-center justify-between mb-6">
-                <h2 class="text-2xl font-semibold text-white flex items-center gap-2">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
-                    </svg>
-                    Your Files
-                </h2>
-                <button 
-                    id="refreshBtn"
-                    class="btn-secondary text-white px-4 py-2 rounded-lg transition-colors"
-                    aria-label="Refresh files"
-                    title="Refresh files"
-                >
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                    </svg>
-                </button>
-            </div>
-
-            <div id="filesContainer" class="space-y-3">
-                <div class="text-center text-white/60 py-12">
-                    <div id="loadingSpinner" class="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-white mb-4"></div>
-                    <p class="text-lg">Loading files...</p>
+        <section class="glass-panel files-section" aria-labelledby="files-heading">
+            <div class="files-stack">
+                <div class="files-toolbar">
+                    <h2 id="files-heading">Your encrypted files</h2>
+                    <div class="files-toolbar-actions">
+                        <button id="refreshBtn" class="btn-icon" type="button" aria-label="Refresh files" title="Refresh files">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19.418 15A8 8 0 1 1 9 4.582" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
+
+                <div id="filesContainer" class="file-grid">
+                    <div class="loading-state" id="loadingState">
+                        <div class="spinner-ring" aria-hidden="true"></div>
+                        <p>Decrypting your file index...</p>
+                    </div>
+                </div>
+
+                <div id="uploadMessageSecondary" class="toast-stack"></div>
             </div>
         </section>
-    </div>
+
+        <footer class="dashboard-footer">All sessions secured with end-to-end encryption. Remember to copy your account number before signing out.</footer>
+    </main>
 
     <script>
         // Utility functions
         function showMessage(elementId, message, type = 'error') {
             const element = document.getElementById(elementId);
-            const icon = type === 'error' 
-                ? '<svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>'
-                : '<svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
-            
-            element.className = `mt-4 rounded-lg p-4 border flex items-center ${
-                type === 'error' 
-                    ? 'bg-red-500/20 border-red-500/50 text-red-200' 
-                    : 'bg-green-500/20 border-green-500/50 text-green-200'
-            }`;
-            element.innerHTML = icon + message;
+            const icon = type === 'error'
+                ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01" /><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>'
+                : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7" /></svg>';
+
+            element.className = `alert ${type === 'error' ? 'alert-error' : 'alert-success'}`;
+            element.innerHTML = `${icon}<span>${message}</span>`;
+            element.setAttribute('role', 'alert');
+            element.setAttribute('aria-live', 'polite');
             element.classList.remove('hidden');
-            setTimeout(() => element.classList.add('hidden'), 5000);
+            setTimeout(() => element.classList.add('hidden'), 4800);
         }
 
         function formatFileSize(bytes) {
@@ -250,13 +171,22 @@
                 .replace(/\t/g, '\\t');
         }
 
+        function formatAccountNumber(number) {
+            return String(number).replace(/\B(?=(\d{4})+(?!\d))/g, ' ');
+        }
+
+        const accountChipNumber = document.getElementById('accountChipNumber');
+        if (accountChipNumber) {
+            accountChipNumber.textContent = formatAccountNumber(accountChipNumber.textContent.trim());
+        }
+
         // Copy Account Number
         document.getElementById('copyAccountBtn').addEventListener('click', () => {
             const accountNumber = '{{ account_number }}';
             navigator.clipboard.writeText(accountNumber).then(() => {
-                showMessage('uploadMessage', 'Account number copied to clipboard!', 'success');
+                showMessage('uploadMessageSecondary', 'Account number copied to clipboard!', 'success');
             }).catch(() => {
-                showMessage('uploadMessage', 'Failed to copy account number', 'error');
+                showMessage('uploadMessageSecondary', 'Failed to copy account number', 'error');
             });
         });
 
@@ -369,7 +299,7 @@
         // Load Files
         async function loadFiles() {
             const container = document.getElementById('filesContainer');
-            container.innerHTML = '<div class="text-center text-white/60 py-12"><div class="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-white mb-4"></div><p class="text-lg">Loading files...</p></div>';
+            container.innerHTML = '<div class="loading-state"><div class="spinner-ring" aria-hidden="true"></div><p>Decrypting your file index...</p></div>';
 
             try {
                 const response = await fetch('/api/files', {
@@ -379,46 +309,50 @@
                 const data = await response.json();
 
                 if (data.success && data.files.length > 0) {
-                    container.innerHTML = data.files.map(file => `
-                        <div class="file-item bg-white/5 rounded-xl p-5 border border-white/10">
-                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex items-center gap-3 mb-2">
-                                        <svg class="w-6 h-6 text-white/60 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    let totalBytes = 0;
+                    container.innerHTML = data.files.map(file => {
+                        totalBytes += file.size_bytes;
+                        return `
+                            <article class="file-card">
+                                <div class="file-card-header">
+                                    <div class="file-icon">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2Z" />
                                         </svg>
-                                        <h3 class="text-white font-semibold text-lg truncate">${escapeHtml(file.name)}</h3>
                                     </div>
-                                    <p class="text-white/60 text-sm ml-9">${formatFileSize(file.size_bytes)}</p>
+                                    <div class="file-meta">
+                                        <span class="file-name">${escapeHtml(file.name)}</span>
+                                        <span class="file-details">${formatFileSize(file.size_bytes)}</span>
+                                    </div>
                                 </div>
-                                <div class="flex gap-2 sm:ml-4">
-                                    <button 
-                                        onclick="downloadFile('${escapeJs(file.name)}')" 
-                                        class="btn-secondary text-white px-5 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2"
-                                    >
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
-                                        </svg>
-                                        Download
-                                    </button>
-                                    <button 
-                                        onclick="deleteFile('${escapeJs(file.name)}')" 
-                                        class="bg-red-500/20 hover:bg-red-500/30 text-white px-5 py-2.5 rounded-lg border border-red-500/50 transition-colors font-medium text-sm flex items-center gap-2"
-                                    >
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                                        </svg>
-                                        Delete
-                                    </button>
+                                <div class="file-actions">
+                                    <button type="button" onclick="downloadFile('${escapeJs(file.name)}')">Download</button>
+                                    <button type="button" class="danger" onclick="deleteFile('${escapeJs(file.name)}')">Delete</button>
                                 </div>
-                            </div>
-                        </div>
-                    `).join('');
+                            </article>
+                        `;
+                    }).join('');
+
+                    document.getElementById('totalFilesStat').textContent = data.files.length;
+                    document.getElementById('storageUsedStat').textContent = formatFileSize(totalBytes);
+                    document.getElementById('filesTrend').textContent = data.files.length === 1 ? '1 file protected' : `${data.files.length} files protected`;
                 } else {
-                    container.innerHTML = '<div class="text-center text-white/60 py-12"><svg class="w-16 h-16 mx-auto mb-4 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg><p class="text-lg">No files uploaded yet</p><p class="text-sm mt-2 text-white/50">Upload your first file to get started!</p></div>';
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2Z" />
+                            </svg>
+                            <div>
+                                <p>No files yet &mdash; your vault is waiting.</p>
+                                <p class="supporting-copy">Upload your first document to see it appear here instantly.</p>
+                            </div>
+                        </div>`;
+                    document.getElementById('totalFilesStat').textContent = '0';
+                    document.getElementById('storageUsedStat').textContent = '0 B';
+                    document.getElementById('filesTrend').textContent = 'Ready for your first upload';
                 }
             } catch (error) {
-                container.innerHTML = '<div class="text-center text-red-300 py-12"><p class="text-lg">Failed to load files</p><p class="text-sm mt-2">Please try refreshing</p></div>';
+                container.innerHTML = '<div class="empty-state"><p>Failed to load files.</p><p class="supporting-copy">Please try refreshing.</p></div>';
                 console.error('Error:', error);
             }
         }
@@ -435,23 +369,23 @@
                     body: JSON.stringify({})
                 });
 
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    window.URL.revokeObjectURL(url);
-                    showMessage('uploadMessage', 'File downloaded successfully!', 'success');
+                    if (response.ok) {
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        window.URL.revokeObjectURL(url);
+                        showMessage('uploadMessageSecondary', 'File downloaded successfully!', 'success');
                 } else {
                     const data = await response.json();
-                    showMessage('uploadMessage', data.error || 'Download failed', 'error');
+                        showMessage('uploadMessageSecondary', data.error || 'Download failed', 'error');
                 }
             } catch (error) {
-                showMessage('uploadMessage', 'Network error', 'error');
+                    showMessage('uploadMessageSecondary', 'Network error', 'error');
                 console.error('Error:', error);
             }
         };
@@ -471,13 +405,13 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    showMessage('uploadMessage', 'File deleted successfully!', 'success');
+                    showMessage('uploadMessageSecondary', 'File deleted successfully!', 'success');
                     loadFiles();
                 } else {
-                    showMessage('uploadMessage', data.error || 'Delete failed', 'error');
+                    showMessage('uploadMessageSecondary', data.error || 'Delete failed', 'error');
                 }
             } catch (error) {
-                showMessage('uploadMessage', 'Network error', 'error');
+                showMessage('uploadMessageSecondary', 'Network error', 'error');
                 console.error('Error:', error);
             }
         };
