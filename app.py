@@ -15,6 +15,10 @@ from flask import Flask, jsonify, render_template, request, make_response, send_
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.backends import default_backend
+import base64
 from db_adapter import create_database_adapter
 
 # Configure logging
@@ -75,31 +79,23 @@ def get_user_data_dir(account_number):
     return user_dir
 
 
-def get_user_key_path(account_number):
-    """Get the path to the user's encryption key file."""
-    return get_user_data_dir(account_number) / 'encryption.key'
-
-
-def generate_encryption_key(account_number):
-    """Generate and save an encryption key for a user."""
-    key = Fernet.generate_key()
-    key_path = get_user_key_path(account_number)
+def derive_encryption_key(account_number):
+    """Derive encryption key from account number using PBKDF2."""
+    # Convert account number to bytes
+    account_bytes = str(account_number).encode('utf-8')
     
-    with open(key_path, 'wb') as f:
-        f.write(key)
+    # Use PBKDF2 to derive a 32-byte key
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b'secure_file_hosting_salt',  # Fixed salt for deterministic key derivation
+        iterations=100000,
+        backend=default_backend()
+    )
     
+    # Derive key and encode as base64 for Fernet
+    key = base64.urlsafe_b64encode(kdf.derive(account_bytes))
     return key
-
-
-def get_encryption_key(account_number):
-    """Load the encryption key for a user."""
-    key_path = get_user_key_path(account_number)
-    
-    if not key_path.exists():
-        raise FileNotFoundError("Encryption key not found")
-    
-    with open(key_path, 'rb') as f:
-        return f.read()
 
 
 @app.errorhandler(413)
@@ -135,9 +131,7 @@ def create_account():
                 doc = {"account_number": account_number, "created_at": datetime.utcnow()}
                 db_adapter.insert_one(doc)
                 
-                # Generate encryption key
-                generate_encryption_key(account_number)
-                
+                # Key is derived from account number, no need to generate/store separately
                 logger.info(f"Created account: {account_number}")
                 
                 # Set session
@@ -248,7 +242,7 @@ def get_files(account_number):
         files = []
         
         for file_path in user_dir.iterdir():
-            if file_path.is_file() and file_path.name != 'encryption.key':
+            if file_path.is_file():
                 size_bytes = file_path.stat().st_size
                 size_mb = round(size_bytes / (1024 * 1024), 2)
                 
@@ -295,12 +289,9 @@ def upload_file(account_number):
         if not filename:
             return jsonify({"error": "Invalid filename"}), 400
         
-        # Get encryption key
-        try:
-            key = get_encryption_key(account_number)
-            fernet = Fernet(key)
-        except FileNotFoundError:
-            return jsonify({"error": "Encryption key not found"}), 500
+        # Derive encryption key from account number
+        key = derive_encryption_key(account_number)
+        fernet = Fernet(key)
         
         # Encrypt file
         encrypted_content = fernet.encrypt(file_content)
@@ -331,7 +322,7 @@ def download_file(account_number, filename):
     """Download a file for the authenticated user."""
     try:
         # Secure filename check
-        if not filename or filename == 'encryption.key':
+        if not filename:
             return jsonify({"error": "Invalid filename"}), 400
         
         filename = secure_filename(filename)
@@ -341,17 +332,9 @@ def download_file(account_number, filename):
         if not file_path.exists() or not file_path.is_file():
             return jsonify({"error": "File not found"}), 404
         
-        # Get encryption key from request
-        data = request.get_json()
-        if not data or 'encryption_key' not in data:
-            return jsonify({"error": "Encryption key is required"}), 400
-        
-        try:
-            key = data['encryption_key'].encode() if isinstance(data['encryption_key'], str) else data['encryption_key']
-            fernet = Fernet(key)
-        except Exception as e:
-            logger.error(f"Invalid encryption key: {e}")
-            return jsonify({"error": "Invalid encryption key"}), 400
+        # Derive encryption key from account number
+        key = derive_encryption_key(account_number)
+        fernet = Fernet(key)
         
         # Read and decrypt file
         try:
@@ -375,26 +358,6 @@ def download_file(account_number, filename):
         return jsonify({"error": "Failed to download file"}), 500
 
 
-@app.route('/api/download-key', methods=['GET'])
-@require_auth
-def download_key(account_number):
-    """Download the encryption key for the authenticated user."""
-    try:
-        key_path = get_user_key_path(account_number)
-        
-        if not key_path.exists():
-            return jsonify({"error": "Encryption key not found"}), 404
-        
-        return send_file(
-            str(key_path),
-            as_attachment=True,
-            download_name='encryption.key',
-            mimetype='application/octet-stream'
-        )
-        
-    except Exception as e:
-        logger.error(f"Error downloading key: {e}")
-        return jsonify({"error": "Failed to download encryption key"}), 500
 
 
 @app.route('/api/delete/<filename>', methods=['DELETE'])
@@ -402,7 +365,7 @@ def download_key(account_number):
 def delete_file(account_number, filename):
     """Delete a file for the authenticated user."""
     try:
-        if not filename or filename == 'encryption.key':
+        if not filename:
             return jsonify({"error": "Invalid filename"}), 400
         
         filename = secure_filename(filename)

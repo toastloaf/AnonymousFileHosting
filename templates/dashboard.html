@@ -9,35 +9,90 @@
     <style>
         .gradient-bg {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
         }
         .card {
             backdrop-filter: blur(10px);
             background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
         .file-item {
-            transition: all 0.2s;
+            transition: all 0.3s ease;
         }
         .file-item:hover {
             transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
         }
         .progress-bar {
             transition: width 0.3s ease;
         }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            transition: all 0.3s ease;
+        }
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+        .account-badge {
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
     </style>
 </head>
-<body class="gradient-bg min-h-screen py-8 px-4">
+<body class="gradient-bg py-8 px-4">
     <div class="max-w-6xl mx-auto">
         <!-- Header -->
-        <header class="mb-8">
-            <div class="card rounded-2xl shadow-2xl p-6 border border-white/20">
+        <header class="mb-8 fade-in">
+            <div class="card rounded-2xl shadow-2xl p-6">
                 <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div>
-                        <h1 class="text-3xl font-bold text-white mb-2">File Dashboard</h1>
-                        <p class="text-white/80">Account: <code class="font-mono font-semibold">{{ account_number }}</code></p>
+                        <h1 class="text-3xl md:text-4xl font-bold text-white mb-2">File Dashboard</h1>
+                        <div class="flex items-center gap-3 mt-2">
+                            <span class="text-white/80 text-sm">Your Account:</span>
+                            <span class="account-badge text-white">{{ account_number }}</span>
+                            <button 
+                                id="copyAccountBtn"
+                                class="text-white/60 hover:text-white transition-colors p-1"
+                                aria-label="Copy account number"
+                                title="Copy account number"
+                            >
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                     <button 
                         id="logoutBtn"
-                        class="bg-red-500/20 hover:bg-red-500/30 text-white px-6 py-2 rounded-lg border border-red-500/50 transition-colors"
+                        class="btn-secondary text-white px-6 py-2.5 rounded-lg font-medium"
                     >
                         Logout
                     </button>
@@ -46,78 +101,62 @@
         </header>
 
         <!-- Upload Section -->
-        <section class="card rounded-2xl shadow-2xl p-6 mb-8 border border-white/20">
-            <h2 class="text-2xl font-semibold text-white mb-4">Upload File</h2>
+        <section class="card rounded-2xl shadow-2xl p-6 mb-8 fade-in">
+            <h2 class="text-2xl font-semibold text-white mb-6 flex items-center gap-2">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                </svg>
+                Upload File
+            </h2>
             
-            <div class="space-y-4">
-                <!-- Encryption Key Section -->
-                <div class="bg-white/5 rounded-lg p-4 border border-white/10">
-                    <label class="block text-white/80 text-sm font-medium mb-2">
-                        Encryption Key
-                    </label>
+            <div class="bg-white/5 rounded-xl p-6 border border-white/10">
+                <div class="flex flex-col gap-4">
                     <div class="flex flex-col sm:flex-row gap-3">
-                        <input 
-                            type="file" 
-                            id="keyFileInput" 
-                            accept=".key"
-                            class="hidden"
-                        >
-                        <button 
-                            id="selectKeyBtn"
-                            class="bg-blue-500/20 hover:bg-blue-500/30 text-white px-4 py-2 rounded-lg border border-blue-500/50 transition-colors text-sm"
-                        >
-                            Select Key File
-                        </button>
-                        <span id="keyFileName" class="text-white/60 text-sm self-center">No key file selected</span>
-                        <button 
-                            id="downloadKeyBtn"
-                            class="bg-green-500/20 hover:bg-green-500/30 text-white px-4 py-2 rounded-lg border border-green-500/50 transition-colors text-sm ml-auto"
-                        >
-                            Download Key
-                        </button>
-                    </div>
-                    <p class="text-white/50 text-xs mt-2">
-                        Upload your encryption key file to enable file uploads and downloads.
-                    </p>
-                </div>
-
-                <!-- File Upload Section -->
-                <div class="bg-white/5 rounded-lg p-4 border border-white/10">
-                    <label class="block text-white/80 text-sm font-medium mb-2">
-                        Select File to Upload
-                    </label>
-                    <div class="flex flex-col gap-3">
                         <input 
                             type="file" 
                             id="fileInput" 
                             class="hidden"
                         >
-                        <div class="flex gap-3">
-                            <button 
-                                id="selectFileBtn"
-                                class="bg-purple-500/20 hover:bg-purple-500/30 text-white px-4 py-2 rounded-lg border border-purple-500/50 transition-colors"
-                            >
+                        <button 
+                            id="selectFileBtn"
+                            class="btn-secondary text-white px-6 py-3 rounded-lg font-medium flex-1 sm:flex-none"
+                        >
+                            <span class="flex items-center justify-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                </svg>
                                 Choose File
-                            </button>
-                            <button 
-                                id="uploadBtn"
-                                class="bg-green-500/20 hover:bg-green-500/30 text-white px-6 py-2 rounded-lg border border-green-500/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                disabled
-                            >
-                                Upload
-                            </button>
-                        </div>
-                        <span id="fileName" class="text-white/60 text-sm">No file selected</span>
+                            </span>
+                        </button>
+                        <button 
+                            id="uploadBtn"
+                            class="btn-primary text-white px-8 py-3 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:transform-none"
+                            disabled
+                        >
+                            <span id="uploadText">Upload</span>
+                            <span id="uploadSpinner" class="hidden">Uploading...</span>
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-2 text-white/70 text-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <span id="fileName" class="text-white/60">No file selected</span>
                     </div>
 
                     <!-- Upload Progress -->
-                    <div id="uploadProgress" class="hidden mt-4">
+                    <div id="uploadProgress" class="hidden mt-2">
                         <div class="flex justify-between text-white/80 text-sm mb-2">
-                            <span>Uploading...</span>
-                            <span id="uploadPercent">0%</span>
+                            <span class="flex items-center gap-2">
+                                <svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                </svg>
+                                Uploading...
+                            </span>
+                            <span id="uploadPercent" class="font-semibold">0%</span>
                         </div>
-                        <div class="w-full bg-white/10 rounded-full h-2">
-                            <div id="progressBar" class="progress-bar bg-green-500 h-2 rounded-full" style="width: 0%"></div>
+                        <div class="w-full bg-white/10 rounded-full h-2.5 overflow-hidden">
+                            <div id="progressBar" class="progress-bar bg-gradient-to-r from-green-400 to-green-600 h-2.5 rounded-full" style="width: 0%"></div>
                         </div>
                     </div>
                 </div>
@@ -128,41 +167,49 @@
         </section>
 
         <!-- Files Section -->
-        <section class="card rounded-2xl shadow-2xl p-6 border border-white/20">
-            <div class="flex items-center justify-between mb-4">
-                <h2 class="text-2xl font-semibold text-white">Your Files</h2>
+        <section class="card rounded-2xl shadow-2xl p-6 fade-in">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-semibold text-white flex items-center gap-2">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                    </svg>
+                    Your Files
+                </h2>
                 <button 
                     id="refreshBtn"
-                    class="text-white/80 hover:text-white transition-colors"
+                    class="btn-secondary text-white px-4 py-2 rounded-lg transition-colors"
                     aria-label="Refresh files"
+                    title="Refresh files"
                 >
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                     </svg>
                 </button>
             </div>
 
             <div id="filesContainer" class="space-y-3">
-                <div class="text-center text-white/60 py-8">
-                    <div id="loadingSpinner" class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-                    <p class="mt-2">Loading files...</p>
+                <div class="text-center text-white/60 py-12">
+                    <div id="loadingSpinner" class="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-white mb-4"></div>
+                    <p class="text-lg">Loading files...</p>
                 </div>
             </div>
         </section>
     </div>
 
     <script>
-        let encryptionKey = null;
-
         // Utility functions
         function showMessage(elementId, message, type = 'error') {
             const element = document.getElementById(elementId);
-            element.className = `mt-4 rounded-lg p-4 border ${
+            const icon = type === 'error' 
+                ? '<svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>'
+                : '<svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
+            
+            element.className = `mt-4 rounded-lg p-4 border flex items-center ${
                 type === 'error' 
                     ? 'bg-red-500/20 border-red-500/50 text-red-200' 
                     : 'bg-green-500/20 border-green-500/50 text-green-200'
             }`;
-            element.textContent = message;
+            element.innerHTML = icon + message;
             element.classList.remove('hidden');
             setTimeout(() => element.classList.add('hidden'), 5000);
         }
@@ -190,53 +237,14 @@
                 .replace(/\t/g, '\\t');
         }
 
-        // Encryption Key Handling
-        document.getElementById('selectKeyBtn').addEventListener('click', () => {
-            document.getElementById('keyFileInput').click();
-        });
-
-        document.getElementById('keyFileInput').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            try {
-                const text = await file.text();
-                encryptionKey = text.trim();
-                document.getElementById('keyFileName').textContent = file.name;
-                document.getElementById('uploadBtn').disabled = false;
-                showMessage('uploadMessage', 'Encryption key loaded successfully', 'success');
-            } catch (error) {
-                showMessage('uploadMessage', 'Failed to read key file', 'error');
-                console.error('Error reading key file:', error);
-            }
-        });
-
-        document.getElementById('downloadKeyBtn').addEventListener('click', async () => {
-            try {
-                const response = await fetch('/api/download-key', {
-                    method: 'GET',
-                    credentials: 'include'
-                });
-
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'encryption.key';
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    window.URL.revokeObjectURL(url);
-                    showMessage('uploadMessage', 'Key file downloaded', 'success');
-                } else {
-                    const data = await response.json();
-                    showMessage('uploadMessage', data.error || 'Failed to download key', 'error');
-                }
-            } catch (error) {
-                showMessage('uploadMessage', 'Network error', 'error');
-                console.error('Error:', error);
-            }
+        // Copy Account Number
+        document.getElementById('copyAccountBtn').addEventListener('click', () => {
+            const accountNumber = '{{ account_number }}';
+            navigator.clipboard.writeText(accountNumber).then(() => {
+                showMessage('uploadMessage', 'Account number copied to clipboard!', 'success');
+            }).catch(() => {
+                showMessage('uploadMessage', 'Failed to copy account number', 'error');
+            });
         });
 
         // File Upload
@@ -246,13 +254,18 @@
 
         document.getElementById('fileInput').addEventListener('change', (e) => {
             const file = e.target.files[0];
+            const uploadBtn = document.getElementById('uploadBtn');
+            
             if (file) {
                 document.getElementById('fileName').textContent = `${file.name} (${formatFileSize(file.size)})`;
+                uploadBtn.disabled = false;
+            } else {
+                document.getElementById('fileName').textContent = 'No file selected';
+                uploadBtn.disabled = true;
             }
         });
 
         async function computeFileHash(file) {
-            const reader = file.stream().getReader();
             const hashBuffer = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
             const hashArray = Array.from(new Uint8Array(hashBuffer));
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
@@ -267,13 +280,13 @@
                 return;
             }
 
-            if (!encryptionKey) {
-                showMessage('uploadMessage', 'Please select your encryption key file', 'error');
-                return;
-            }
-
             const uploadBtn = document.getElementById('uploadBtn');
+            const uploadText = document.getElementById('uploadText');
+            const uploadSpinner = document.getElementById('uploadSpinner');
+            
             uploadBtn.disabled = true;
+            uploadText.classList.add('hidden');
+            uploadSpinner.classList.remove('hidden');
 
             try {
                 // Show progress
@@ -301,22 +314,29 @@
 
                 xhr.addEventListener('load', () => {
                     if (xhr.status === 200) {
-                        showMessage('uploadMessage', 'File uploaded successfully', 'success');
+                        showMessage('uploadMessage', 'File uploaded successfully!', 'success');
                         document.getElementById('uploadProgress').classList.add('hidden');
                         fileInput.value = '';
                         document.getElementById('fileName').textContent = 'No file selected';
+                        uploadBtn.disabled = true;
+                        uploadText.classList.remove('hidden');
+                        uploadSpinner.classList.add('hidden');
                         loadFiles();
                     } else {
                         const data = JSON.parse(xhr.responseText);
                         showMessage('uploadMessage', data.error || 'Upload failed', 'error');
                         document.getElementById('uploadProgress').classList.add('hidden');
+                        uploadText.classList.remove('hidden');
+                        uploadSpinner.classList.add('hidden');
+                        uploadBtn.disabled = false;
                     }
-                    uploadBtn.disabled = false;
                 });
 
                 xhr.addEventListener('error', () => {
                     showMessage('uploadMessage', 'Network error during upload', 'error');
                     document.getElementById('uploadProgress').classList.add('hidden');
+                    uploadText.classList.remove('hidden');
+                    uploadSpinner.classList.add('hidden');
                     uploadBtn.disabled = false;
                 });
 
@@ -327,6 +347,8 @@
                 showMessage('uploadMessage', 'Failed to upload file', 'error');
                 console.error('Error:', error);
                 uploadBtn.disabled = false;
+                uploadText.classList.remove('hidden');
+                uploadSpinner.classList.add('hidden');
                 document.getElementById('uploadProgress').classList.add('hidden');
             }
         });
@@ -334,7 +356,7 @@
         // Load Files
         async function loadFiles() {
             const container = document.getElementById('filesContainer');
-            container.innerHTML = '<div class="text-center text-white/60 py-8"><div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div><p class="mt-2">Loading files...</p></div>';
+            container.innerHTML = '<div class="text-center text-white/60 py-12"><div class="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-white mb-4"></div><p class="text-lg">Loading files...</p></div>';
 
             try {
                 const response = await fetch('/api/files', {
@@ -345,23 +367,34 @@
 
                 if (data.success && data.files.length > 0) {
                     container.innerHTML = data.files.map(file => `
-                        <div class="file-item bg-white/5 rounded-lg p-4 border border-white/10">
-                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                                <div class="flex-1">
-                                    <h3 class="text-white font-semibold">${escapeHtml(file.name)}</h3>
-                                    <p class="text-white/60 text-sm">${formatFileSize(file.size_bytes)}</p>
+                        <div class="file-item bg-white/5 rounded-xl p-5 border border-white/10">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-3 mb-2">
+                                        <svg class="w-6 h-6 text-white/60 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                        </svg>
+                                        <h3 class="text-white font-semibold text-lg truncate">${escapeHtml(file.name)}</h3>
+                                    </div>
+                                    <p class="text-white/60 text-sm ml-9">${formatFileSize(file.size_bytes)}</p>
                                 </div>
-                                <div class="flex gap-2">
+                                <div class="flex gap-2 sm:ml-4">
                                     <button 
                                         onclick="downloadFile('${escapeJs(file.name)}')" 
-                                        class="bg-blue-500/20 hover:bg-blue-500/30 text-white px-4 py-2 rounded-lg border border-blue-500/50 transition-colors text-sm"
+                                        class="btn-secondary text-white px-5 py-2.5 rounded-lg font-medium text-sm flex items-center gap-2"
                                     >
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                                        </svg>
                                         Download
                                     </button>
                                     <button 
                                         onclick="deleteFile('${escapeJs(file.name)}')" 
-                                        class="bg-red-500/20 hover:bg-red-500/30 text-white px-4 py-2 rounded-lg border border-red-500/50 transition-colors text-sm"
+                                        class="bg-red-500/20 hover:bg-red-500/30 text-white px-5 py-2.5 rounded-lg border border-red-500/50 transition-colors font-medium text-sm flex items-center gap-2"
                                     >
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                        </svg>
                                         Delete
                                     </button>
                                 </div>
@@ -369,21 +402,16 @@
                         </div>
                     `).join('');
                 } else {
-                    container.innerHTML = '<div class="text-center text-white/60 py-8"><p>No files uploaded yet</p></div>';
+                    container.innerHTML = '<div class="text-center text-white/60 py-12"><svg class="w-16 h-16 mx-auto mb-4 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg><p class="text-lg">No files uploaded yet</p><p class="text-sm mt-2 text-white/50">Upload your first file to get started!</p></div>';
                 }
             } catch (error) {
-                container.innerHTML = '<div class="text-center text-red-300 py-8"><p>Failed to load files</p></div>';
+                container.innerHTML = '<div class="text-center text-red-300 py-12"><p class="text-lg">Failed to load files</p><p class="text-sm mt-2">Please try refreshing</p></div>';
                 console.error('Error:', error);
             }
         }
 
         // Download File
         window.downloadFile = async function(filename) {
-            if (!encryptionKey) {
-                showMessage('uploadMessage', 'Please select your encryption key file first', 'error');
-                return;
-            }
-
             try {
                 const response = await fetch(`/api/download/${encodeURIComponent(filename)}`, {
                     method: 'POST',
@@ -391,7 +419,7 @@
                         'Content-Type': 'application/json'
                     },
                     credentials: 'include',
-                    body: JSON.stringify({ encryption_key: encryptionKey })
+                    body: JSON.stringify({})
                 });
 
                 if (response.ok) {
@@ -404,7 +432,7 @@
                     a.click();
                     a.remove();
                     window.URL.revokeObjectURL(url);
-                    showMessage('uploadMessage', 'File downloaded successfully', 'success');
+                    showMessage('uploadMessage', 'File downloaded successfully!', 'success');
                 } else {
                     const data = await response.json();
                     showMessage('uploadMessage', data.error || 'Download failed', 'error');
@@ -430,7 +458,7 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    showMessage('uploadMessage', 'File deleted successfully', 'success');
+                    showMessage('uploadMessage', 'File deleted successfully!', 'success');
                     loadFiles();
                 } else {
                     showMessage('uploadMessage', data.error || 'Delete failed', 'error');
@@ -442,7 +470,9 @@
         };
 
         // Refresh Files
-        document.getElementById('refreshBtn').addEventListener('click', loadFiles);
+        document.getElementById('refreshBtn').addEventListener('click', () => {
+            loadFiles();
+        });
 
         // Logout
         document.getElementById('logoutBtn').addEventListener('click', async () => {
