@@ -180,6 +180,22 @@ class ClientCrypto {
     }
 
     /**
+     * Store encrypted file index in localStorage
+     * Index maps file hashes to encrypted metadata (filename, upload date, etc.)
+     */
+    storeFileIndex(accountNumber, fileIndex) {
+        localStorage.setItem(`file_index_${accountNumber}`, JSON.stringify(fileIndex));
+    }
+
+    /**
+     * Load encrypted file index from localStorage
+     */
+    loadFileIndex(accountNumber) {
+        const indexJson = localStorage.getItem(`file_index_${accountNumber}`);
+        return indexJson ? JSON.parse(indexJson) : [];
+    }
+
+    /**
      * Load encryption key from localStorage
      */
     async loadKey(accountNumber) {
@@ -221,6 +237,35 @@ class ClientCrypto {
         combined.set(result.encrypted, result.iv.length);
         
         return this.uint8ArrayToBase64(combined);
+    }
+
+    /**
+     * Encrypt file metadata (filename, original size, upload date)
+     */
+    async encryptMetadata(metadata, key) {
+        const metadataJson = JSON.stringify(metadata);
+        const metadataBytes = new TextEncoder().encode(metadataJson);
+        const result = await this.encrypt(metadataBytes, key);
+        
+        // Combine IV and encrypted data
+        const combined = new Uint8Array(result.iv.length + result.encrypted.length);
+        combined.set(result.iv, 0);
+        combined.set(result.encrypted, result.iv.length);
+        
+        return this.uint8ArrayToBase64(combined);
+    }
+
+    /**
+     * Decrypt file metadata
+     */
+    async decryptMetadata(encryptedMetadataBase64, key) {
+        const combined = this.base64ToUint8Array(encryptedMetadataBase64);
+        const iv = combined.slice(0, this.ivLength);
+        const encrypted = combined.slice(this.ivLength);
+        
+        const decrypted = await this.decrypt(encrypted, iv, key);
+        const metadataJson = new TextDecoder().decode(decrypted);
+        return JSON.parse(metadataJson);
     }
 
     /**

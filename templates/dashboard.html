@@ -266,9 +266,6 @@
                 document.getElementById('uploadPercent').textContent = 'Encrypting...';
                 const encryptionResult = await clientCrypto.encryptFile(file, encryptionKey);
                 
-                // Encrypt filename
-                const encryptedFilename = await clientCrypto.encryptFilename(file.name, encryptionKey);
-                
                 // Combine IV and encrypted data
                 const combinedData = new Uint8Array(encryptionResult.iv.length + encryptionResult.encrypted.length);
                 combinedData.set(encryptionResult.iv, 0);
@@ -277,6 +274,14 @@
                 // Compute hash of combined data (for integrity verification)
                 const encryptedBlob = new Blob([combinedData]);
                 const fileHash = await computeFileHash(encryptedBlob);
+                
+                // Encrypt metadata (filename, original size, upload date)
+                const metadata = {
+                    filename: file.name,
+                    original_size: file.size,
+                    uploaded_at: new Date().toISOString()
+                };
+                const encryptedMetadata = await clientCrypto.encryptMetadata(metadata, encryptionKey);
                 
                 // Create blob for upload
                 const encryptedFileBlob = new Blob([combinedData], { type: 'application/octet-stream' });
@@ -289,8 +294,7 @@
                 const formData = new FormData();
                 formData.append('file', encryptedFileBlob, 'encrypted_file');
                 formData.append('file_hash', fileHash);
-                formData.append('encrypted_filename', encryptedFilename);
-                formData.append('original_filename', file.name); // For display only, server won't store this
+                formData.append('encrypted_metadata', encryptedMetadata);
 
                 const xhr = new XMLHttpRequest();
 
@@ -306,6 +310,16 @@
 
                 xhr.addEventListener('load', () => {
                     if (xhr.status === 200) {
+                        const data = JSON.parse(xhr.responseText);
+                        
+                        // Update local file index
+                        const fileIndex = clientCrypto.loadFileIndex(accountNumber);
+                        fileIndex.push({
+                            file_hash: data.file_hash,
+                            encrypted_metadata: encryptedMetadata
+                        });
+                        clientCrypto.storeFileIndex(accountNumber, fileIndex);
+                        
                         showMessage('uploadMessage', 'File encrypted and uploaded successfully!', 'success');
                         document.getElementById('uploadProgress').classList.add('hidden');
                         fileInput.value = '';
@@ -356,8 +370,36 @@
             }
 
             try {
+                // Load local file index
+                const localFileIndex = clientCrypto.loadFileIndex(accountNumber);
+                
+                if (localFileIndex.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2Z" />
+                            </svg>
+                            <div>
+                                <p>No files yet &mdash; your vault is waiting.</p>
+                                <p class="supporting-copy">Upload your first document to see it appear here instantly.</p>
+                            </div>
+                        </div>`;
+                    document.getElementById('totalFilesStat').textContent = '0';
+                    document.getElementById('storageUsedStat').textContent = '0 B';
+                    document.getElementById('filesTrend').textContent = 'Ready for your first upload';
+                    return;
+                }
+                
+                // Validate with server and get current sizes
                 const response = await fetch('/api/files', {
-                    credentials: 'include'
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        encrypted_file_index: localFileIndex
+                    })
                 });
 
                 const data = await response.json();
@@ -365,23 +407,32 @@
                 if (data.success && data.files.length > 0) {
                     let totalBytes = 0;
                     
-                    // Decrypt filenames and build file list
+                    // Decrypt metadata and build file list
                     const filePromises = data.files.map(async (file) => {
                         try {
-                            const decryptedFilename = await clientCrypto.decryptFilename(file.encrypted_filename, encryptionKey);
+                            const metadata = await clientCrypto.decryptMetadata(file.encrypted_metadata, encryptionKey);
                             totalBytes += file.size_bytes;
                             return {
-                                encryptedFilename: file.encrypted_filename,
-                                decryptedFilename: decryptedFilename,
+                                fileHash: file.file_hash,
+                                filename: metadata.filename,
+                                originalSize: metadata.original_size,
+                                uploadedAt: metadata.uploaded_at,
                                 sizeBytes: file.size_bytes
                             };
                         } catch (error) {
-                            console.error('Failed to decrypt filename:', error);
+                            console.error('Failed to decrypt metadata:', error);
                             return null;
                         }
                     });
                     
                     const decryptedFiles = (await Promise.all(filePromises)).filter(f => f !== null);
+                    
+                    // Update local index if some files were removed server-side
+                    if (decryptedFiles.length < localFileIndex.length) {
+                        const validHashes = new Set(decryptedFiles.map(f => f.fileHash));
+                        const updatedIndex = localFileIndex.filter(entry => validHashes.has(entry.file_hash));
+                        clientCrypto.storeFileIndex(accountNumber, updatedIndex);
+                    }
                     
                     if (decryptedFiles.length > 0) {
                         container.innerHTML = decryptedFiles.map(file => {
@@ -394,13 +445,13 @@
                                             </svg>
                                         </div>
                                         <div class="file-meta">
-                                            <span class="file-name">${escapeHtml(file.decryptedFilename)}</span>
+                                            <span class="file-name">${escapeHtml(file.filename)}</span>
                                             <span class="file-details">${formatFileSize(file.sizeBytes)}</span>
                                         </div>
                                     </div>
                                     <div class="file-actions">
-                                        <button type="button" onclick="downloadFile('${escapeJs(file.encryptedFilename)}')">Download</button>
-                                        <button type="button" class="danger" onclick="deleteFile('${escapeJs(file.encryptedFilename)}')">Delete</button>
+                                        <button type="button" onclick="downloadFile('${escapeJs(file.fileHash)}', '${escapeJs(file.filename)}')">Download</button>
+                                        <button type="button" class="danger" onclick="deleteFile('${escapeJs(file.fileHash)}', '${escapeJs(file.filename)}')">Delete</button>
                                     </div>
                                 </article>
                             `;
@@ -446,17 +497,14 @@
         }
 
         // Download File
-        window.downloadFile = async function(encryptedFilename) {
+        window.downloadFile = async function(fileHash, filename) {
             if (!encryptionKey) {
                 showMessage('uploadMessageSecondary', 'Encryption not initialized. Please refresh the page.', 'error');
                 return;
             }
 
             try {
-                // Decrypt filename to get original filename for download
-                const originalFilename = await clientCrypto.decryptFilename(encryptedFilename, encryptionKey);
-                
-                const response = await fetch(`/api/download/${encodeURIComponent(encryptedFilename)}`, {
+                const response = await fetch(`/api/download/${encodeURIComponent(fileHash)}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -480,14 +528,14 @@
                         encryptedContent,
                         iv,
                         encryptionKey,
-                        encryptedBlob.type || 'application/octet-stream'
+                        'application/octet-stream'
                     );
                     
                     // Download decrypted file
                     const url = window.URL.createObjectURL(decryptedBlob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = originalFilename;
+                    a.download = filename;
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
@@ -504,21 +552,18 @@
         };
 
         // Delete File
-        window.deleteFile = async function(encryptedFilename) {
+        window.deleteFile = async function(fileHash, filename) {
             if (!encryptionKey) {
                 showMessage('uploadMessageSecondary', 'Encryption not initialized. Please refresh the page.', 'error');
                 return;
             }
 
             try {
-                // Decrypt filename for confirmation message
-                const originalFilename = await clientCrypto.decryptFilename(encryptedFilename, encryptionKey);
-                
-                if (!confirm(`Are you sure you want to delete "${originalFilename}"?`)) {
+                if (!confirm(`Are you sure you want to delete "${filename}"?`)) {
                     return;
                 }
 
-                const response = await fetch(`/api/delete/${encodeURIComponent(encryptedFilename)}`, {
+                const response = await fetch(`/api/delete/${encodeURIComponent(fileHash)}`, {
                     method: 'DELETE',
                     credentials: 'include'
                 });
@@ -526,13 +571,18 @@
                 const data = await response.json();
 
                 if (data.success) {
+                    // Remove from local index
+                    const fileIndex = clientCrypto.loadFileIndex(accountNumber);
+                    const updatedIndex = fileIndex.filter(entry => entry.file_hash !== fileHash);
+                    clientCrypto.storeFileIndex(accountNumber, updatedIndex);
+                    
                     showMessage('uploadMessageSecondary', 'File deleted successfully!', 'success');
                     loadFiles();
                 } else {
                     showMessage('uploadMessageSecondary', data.error || 'Delete failed', 'error');
                 }
             } catch (error) {
-                showMessage('uploadMessageSecondary', 'Failed to decrypt filename or delete file: ' + error.message, 'error');
+                showMessage('uploadMessageSecondary', 'Failed to delete file: ' + error.message, 'error');
                 console.error('Error:', error);
             }
         };

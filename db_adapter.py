@@ -27,6 +27,23 @@ class DatabaseAdapter:
     def initialize(self) -> None:
         """Initialize the database connection and tables."""
         raise NotImplementedError
+    
+    def add_file_ownership(self, account_number: int, file_hash: str, 
+                          encrypted_metadata: str, file_size: int) -> None:
+        """Record file ownership for an account."""
+        raise NotImplementedError
+    
+    def find_file_ownership(self, account_number: int, file_hash: str) -> Optional[Dict[str, Any]]:
+        """Find file ownership record."""
+        raise NotImplementedError
+    
+    def remove_file_ownership(self, account_number: int, file_hash: str) -> None:
+        """Remove file ownership record."""
+        raise NotImplementedError
+    
+    def count_file_owners(self, file_hash: str) -> int:
+        """Count how many users own/reference a file."""
+        raise NotImplementedError
 
 
 class MongoDBAdapter(DatabaseAdapter):
@@ -56,6 +73,15 @@ class MongoDBAdapter(DatabaseAdapter):
             self.collection = self.db[self.collection_name]
             # Create index on account number for faster lookups
             self.collection.create_index("account_number", unique=True)
+            
+            # Create indexes for file ownership collection
+            file_ownership_collection = self.db['file_ownership']
+            file_ownership_collection.create_index(
+                [("account_number", 1), ("file_hash", 1)], 
+                unique=True
+            )
+            file_ownership_collection.create_index("file_hash")
+            
             logger.info("Connected to MongoDB successfully")
         except self.ConnectionFailure as e:
             logger.error(f"Failed to connect to MongoDB: {e}")
@@ -69,6 +95,48 @@ class MongoDBAdapter(DatabaseAdapter):
         """Insert a new account."""
         from pymongo.errors import DuplicateKeyError
         self.collection.insert_one(account)
+    
+    def add_file_ownership(self, account_number: int, file_hash: str, 
+                          encrypted_metadata: str, file_size: int) -> None:
+        """Record file ownership for an account."""
+        file_ownership_collection = self.db['file_ownership']
+        
+        # Use upsert to handle duplicate uploads
+        file_ownership_collection.update_one(
+            {
+                'account_number': account_number,
+                'file_hash': file_hash
+            },
+            {
+                '$set': {
+                    'encrypted_metadata': encrypted_metadata,
+                    'file_size': file_size,
+                    'uploaded_at': datetime.utcnow()
+                }
+            },
+            upsert=True
+        )
+    
+    def find_file_ownership(self, account_number: int, file_hash: str) -> Optional[Dict[str, Any]]:
+        """Find file ownership record."""
+        file_ownership_collection = self.db['file_ownership']
+        return file_ownership_collection.find_one({
+            'account_number': account_number,
+            'file_hash': file_hash
+        })
+    
+    def remove_file_ownership(self, account_number: int, file_hash: str) -> None:
+        """Remove file ownership record."""
+        file_ownership_collection = self.db['file_ownership']
+        file_ownership_collection.delete_one({
+            'account_number': account_number,
+            'file_hash': file_hash
+        })
+    
+    def count_file_owners(self, file_hash: str) -> int:
+        """Count how many users own/reference a file."""
+        file_ownership_collection = self.db['file_ownership']
+        return file_ownership_collection.count_documents({'file_hash': file_hash})
 
 
 class SQLiteAdapter(DatabaseAdapter):
@@ -98,6 +166,25 @@ class SQLiteAdapter(DatabaseAdapter):
             cursor.execute('''
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_account_number 
                 ON accounts(account_number)
+            ''')
+            
+            # Create file ownership table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS file_ownership (
+                    account_number INTEGER NOT NULL,
+                    file_hash TEXT NOT NULL,
+                    encrypted_metadata TEXT NOT NULL,
+                    file_size INTEGER NOT NULL,
+                    uploaded_at TEXT NOT NULL,
+                    PRIMARY KEY (account_number, file_hash),
+                    FOREIGN KEY (account_number) REFERENCES accounts(account_number)
+                )
+            ''')
+            
+            # Create index on file_hash for counting owners
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_file_hash 
+                ON file_ownership(file_hash)
             ''')
             
             self.conn.commit()
@@ -143,6 +230,73 @@ class SQLiteAdapter(DatabaseAdapter):
             # Duplicate key error (account number already exists)
             self.conn.rollback()
             raise ValueError("Account number already exists")
+    
+    def add_file_ownership(self, account_number: int, file_hash: str, 
+                          encrypted_metadata: str, file_size: int) -> None:
+        """Record file ownership for an account."""
+        if not self.conn:
+            raise RuntimeError("Database not initialized")
+        
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT OR REPLACE INTO file_ownership 
+                (account_number, file_hash, encrypted_metadata, file_size, uploaded_at)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (account_number, file_hash, encrypted_metadata, file_size, datetime.utcnow().isoformat()))
+            self.conn.commit()
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            raise RuntimeError(f"Failed to add file ownership: {e}")
+    
+    def find_file_ownership(self, account_number: int, file_hash: str) -> Optional[Dict[str, Any]]:
+        """Find file ownership record."""
+        if not self.conn:
+            raise RuntimeError("Database not initialized")
+        
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT account_number, file_hash, encrypted_metadata, file_size, uploaded_at
+            FROM file_ownership
+            WHERE account_number = ? AND file_hash = ?
+        ''', (account_number, file_hash))
+        row = cursor.fetchone()
+        
+        if row:
+            return {
+                'account_number': row['account_number'],
+                'file_hash': row['file_hash'],
+                'encrypted_metadata': row['encrypted_metadata'],
+                'file_size': row['file_size'],
+                'uploaded_at': row['uploaded_at']
+            }
+        return None
+    
+    def remove_file_ownership(self, account_number: int, file_hash: str) -> None:
+        """Remove file ownership record."""
+        if not self.conn:
+            raise RuntimeError("Database not initialized")
+        
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            DELETE FROM file_ownership
+            WHERE account_number = ? AND file_hash = ?
+        ''', (account_number, file_hash))
+        self.conn.commit()
+    
+    def count_file_owners(self, file_hash: str) -> int:
+        """Count how many users own/reference a file."""
+        if not self.conn:
+            raise RuntimeError("Database not initialized")
+        
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT COUNT(*) as count
+            FROM file_ownership
+            WHERE file_hash = ?
+        ''', (file_hash,))
+        row = cursor.fetchone()
+        return row['count'] if row else 0
     
     def close(self) -> None:
         """Close the database connection."""
