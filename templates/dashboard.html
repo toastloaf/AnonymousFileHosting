@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="description" content="File hosting dashboard">
-    <title>VaultSphere &mdash; Dashboard</title>
+    <title>Crypten &mdash; Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -17,7 +17,7 @@
         <header class="dashboard-header glass-panel" aria-labelledby="dashboard-heading">
             <div class="header-top">
                 <div class="brand-mark">
-                    <span>VaultSphere</span>
+                    <span>Crypten</span>
                     <strong id="dashboard-heading">Encrypted workspace</strong>
                 </div>
                 <div class="header-actions">
@@ -134,8 +134,8 @@
     </main>
 
     <script>
-        const SESSION_ACCOUNT_KEY = 'vaultsphere.session.accountKey';
-        const SESSION_ACCOUNT_ID = 'vaultsphere.session.accountId';
+        const SESSION_ACCOUNT_KEY = 'crypten.session.accountKey';
+        const SESSION_ACCOUNT_ID = 'crypten.session.accountId';
 
         // Account identifiers supplied by the server (hashed, not secret)
         const accountId = {{ account_id|tojson }};
@@ -616,7 +616,7 @@
             try {
                 sessionStorage.removeItem(SESSION_ACCOUNT_KEY);
                 sessionStorage.removeItem(SESSION_ACCOUNT_ID);
-                sessionStorage.removeItem('vaultsphere.session.accountFingerprint');
+                sessionStorage.removeItem('crypten.session.accountFingerprint');
                 await fetch('/api/logout', {
                     method: 'POST',
                     credentials: 'include'
@@ -626,7 +626,7 @@
                 console.error('Error:', error);
                 sessionStorage.removeItem(SESSION_ACCOUNT_KEY);
                 sessionStorage.removeItem(SESSION_ACCOUNT_ID);
-                sessionStorage.removeItem('vaultsphere.session.accountFingerprint');
+                sessionStorage.removeItem('crypten.session.accountFingerprint');
                 window.location.href = '/';
             }
         });

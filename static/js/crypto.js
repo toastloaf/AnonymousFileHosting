@@ -10,7 +10,7 @@ class ClientCrypto {
             length: 256
         };
         this.ivLength = 12; // 96 bits for GCM
-        this.kdfSalt = new TextEncoder().encode('vaultsphere_ekdf_v1');
+        this.kdfSalt = new TextEncoder().encode('crypten_ekdf_v1');
         this.kdfIterations = 200000;
     }
 
