@@ -269,14 +269,14 @@
                 // Encrypt filename
                 const encryptedFilename = await clientCrypto.encryptFilename(file.name, encryptionKey);
                 
-                // Compute hash of encrypted data (for integrity verification)
-                const encryptedBlob = new Blob([encryptionResult.encrypted]);
-                const fileHash = await computeFileHash(encryptedBlob);
-
                 // Combine IV and encrypted data
                 const combinedData = new Uint8Array(encryptionResult.iv.length + encryptionResult.encrypted.length);
                 combinedData.set(encryptionResult.iv, 0);
                 combinedData.set(encryptionResult.encrypted, encryptionResult.iv.length);
+                
+                // Compute hash of combined data (for integrity verification)
+                const encryptedBlob = new Blob([combinedData]);
+                const fileHash = await computeFileHash(encryptedBlob);
                 
                 // Create blob for upload
                 const encryptedFileBlob = new Blob([combinedData], { type: 'application/octet-stream' });
