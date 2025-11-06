@@ -12,8 +12,9 @@ from datetime import timedelta, datetime
 from functools import wraps
 
 from flask import Flask, jsonify, render_template, request, make_response, send_file, session, redirect
-from werkzeug.utils import secure_filename
+from urllib.parse import quote
 from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.http import quote_header_value
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -102,6 +103,31 @@ def get_user_fernet(account_number):
     """Get a Fernet instance for the specified account."""
     key = derive_encryption_key(account_number)
     return Fernet(key)
+
+
+def is_valid_plain_filename(filename):
+    """Validate that a filename is safe to use without altering user-provided characters."""
+    if not isinstance(filename, str):
+        return False
+    if filename.strip() == '':
+        return False
+    if filename in {'.', '..'}:
+        return False
+    if '\x00' in filename:
+        return False
+    if '/' in filename or '\\' in filename:
+        return False
+    return True
+
+
+def build_content_disposition(filename):
+    """Build a Content-Disposition header value that preserves the original filename."""
+    disposition = f"attachment; filename={quote_header_value(filename)}"
+    try:
+        filename.encode('ascii')
+    except UnicodeEncodeError:
+        disposition += f"; filename*=UTF-8''{quote(filename)}"
+    return disposition
 
 
 def encrypt_filename(filename, fernet):
@@ -323,10 +349,10 @@ def upload_file(account_number):
         if client_hash != server_hash:
             return jsonify({"error": "File integrity check failed"}), 400
         
-        # Secure filename
-        filename = secure_filename(file.filename)
-        if not filename:
+        original_filename = file.filename
+        if not is_valid_plain_filename(original_filename):
             return jsonify({"error": "Invalid filename"}), 400
+        filename = original_filename
         
         # Derive encryption key from account number
         fernet = get_user_fernet(account_number)
@@ -375,11 +401,8 @@ def upload_file(account_number):
 def download_file(account_number, filename):
     """Download a file for the authenticated user."""
     try:
-        # Secure filename check
-        if not filename:
+        if not is_valid_plain_filename(filename):
             return jsonify({"error": "Invalid filename"}), 400
-        
-        filename = secure_filename(filename)
         user_dir = get_user_data_dir(account_number)
         fernet = get_user_fernet(account_number)
 
@@ -400,7 +423,7 @@ def download_file(account_number, filename):
         
         # Send file
         response = make_response(decrypted_content)
-        response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response.headers['Content-Disposition'] = build_content_disposition(filename)
         response.headers['Content-Type'] = 'application/octet-stream'
         
         return response
@@ -417,10 +440,8 @@ def download_file(account_number, filename):
 def delete_file(account_number, filename):
     """Delete a file for the authenticated user."""
     try:
-        if not filename:
+        if not is_valid_plain_filename(filename):
             return jsonify({"error": "Invalid filename"}), 400
-        
-        filename = secure_filename(filename)
         user_dir = get_user_data_dir(account_number)
         fernet = get_user_fernet(account_number)
 
