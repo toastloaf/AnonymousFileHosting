@@ -41,14 +41,14 @@ Files are now stored by their content hash instead of user ID:
 - Server never sees or stores the mapping between users and filenames
 - Format: `[{file_hash: "abc123...", encrypted_metadata: "..."}]`
 
-### 3. Database Ownership Tracking
+### 3. Database Ownership Tracking & Hardened Account Keys
 
-New `file_ownership` table tracks access without revealing filenames:
+New `file_ownership` table tracks access without revealing filenames. Account identifiers are stored as SHA-256 hashes of the high-entropy account keys provided to users, ensuring the database never holds the raw keys themselves:
 
-| account_number | file_hash | encrypted_metadata | file_size | uploaded_at |
-|----------------|-----------|-------------------|-----------|-------------|
-| 123456 | abc123... | (encrypted blob) | 1048576 | 2025-11-06... |
-| 789012 | def456... | (encrypted blob) | 2097152 | 2025-11-06... |
+| account_id (sha256) | file_hash | encrypted_metadata | file_size | uploaded_at |
+|---------------------|-----------|-------------------|-----------|-------------|
+| 0f1a... | abc123... | (encrypted blob) | 1048576 | 2025-11-06... |
+| d9b4... | def456... | (encrypted blob) | 2097152 | 2025-11-06... |
 
 ### 4. Automatic Deduplication
 
@@ -126,7 +126,7 @@ New `file_ownership` table tracks access without revealing filenames:
 - Attacker CANNOT: Link files to specific users, decrypt content, or determine filenames
 
 **Scenario 2: Database Access**
-- Attacker sees: Account numbers, file hashes, encrypted metadata blobs
+- Attacker sees: Hashed account identifiers, file hashes, encrypted metadata blobs
 - Attacker CANNOT: Decrypt metadata, access file content, or determine filenames
 
 **Scenario 3: Full Server Access**
@@ -225,7 +225,7 @@ Possible improvements for even better security:
 3. **Multi-Device Sync**
    - Sync encrypted file index across devices
    - End-to-end encrypted sync protocol
-   - Could use account number as sync identifier
+     - Could use hashed account identifier as sync anchor
 
 4. **Audit Logging**
    - Log access patterns (not content)

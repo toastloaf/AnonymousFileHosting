@@ -4,9 +4,11 @@ A Flask-based file hosting service with encryption and anonymous account system.
 """
 
 import os
+import base64
 import secrets
 import hashlib
 import logging
+import re
 from pathlib import Path
 from datetime import timedelta, datetime
 from functools import wraps
@@ -43,17 +45,75 @@ except Exception as e:
     raise
 
 
+# ---------------------------------------------------------------------------
+# Account key helpers
+# ---------------------------------------------------------------------------
+
+ACCOUNT_KEY_BYTES = int(os.environ.get('ACCOUNT_KEY_BYTES', '24'))  # 192-bit entropy by default
+ACCOUNT_KEY_GROUP_SIZE = int(os.environ.get('ACCOUNT_KEY_GROUP_SIZE', '4'))
+ACCOUNT_IDENTIFIER_PREFIX_LEN = int(os.environ.get('ACCOUNT_IDENTIFIER_PREFIX_LEN', '12'))
+ACCOUNT_KEY_PATTERN = re.compile(r'^[A-Z2-7]+$')
+SESSION_ACCOUNT_ID_KEY = 'account_id'
+
+
+def _format_account_key_display(normalized_key: str) -> str:
+    """Format an uppercase base32 key into grouped chunks for display."""
+    chunks = [normalized_key[i:i + ACCOUNT_KEY_GROUP_SIZE] for i in range(0, len(normalized_key), ACCOUNT_KEY_GROUP_SIZE)]
+    return '-'.join(chunks)
+
+
+def generate_account_secret() -> dict:
+    """Generate a high-entropy account secret and derived identifiers."""
+    raw_bytes = secrets.token_bytes(ACCOUNT_KEY_BYTES)
+    # Base32 provides an easy-to-type alphabet (A-Z, 2-7)
+    normalized_key = base64.b32encode(raw_bytes).decode('utf-8').rstrip('=')
+    display_key = _format_account_key_display(normalized_key)
+    account_id = hashlib.sha256(normalized_key.encode('utf-8')).hexdigest()
+    fingerprint = account_id[:ACCOUNT_IDENTIFIER_PREFIX_LEN]
+    return {
+        'normalized_key': normalized_key,
+        'display_key': display_key,
+        'account_id': account_id,
+        'fingerprint': fingerprint
+    }
+
+
+def normalize_account_secret(account_key: str) -> str:
+    """Normalize user-supplied account key to canonical uppercase base32."""
+    if not account_key:
+        raise ValueError("Account key is required")
+
+    stripped = ''.join(ch for ch in account_key.upper() if ch.isalnum())
+    if not stripped:
+        raise ValueError("Account key is empty after normalization")
+
+    if not ACCOUNT_KEY_PATTERN.fullmatch(stripped):
+        raise ValueError("Account key contains invalid characters. Only A-Z and 2-7 are permitted.")
+
+    return stripped
+
+
+def derive_account_id(normalized_key: str) -> str:
+    """Derive the canonical account identifier from a normalized key."""
+    return hashlib.sha256(normalized_key.encode('utf-8')).hexdigest()
+
+
+def format_fingerprint(account_id: str) -> str:
+    """Return a short fingerprint for display purposes."""
+    return account_id[:ACCOUNT_IDENTIFIER_PREFIX_LEN]
+
+
 def require_auth(f):
     """Decorator to require authentication."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        account_number = session.get('account_number')
-        if not account_number:
+        account_id = session.get(SESSION_ACCOUNT_ID_KEY)
+        if not account_id:
             return jsonify({"error": "Authentication required"}), 401
         
         # Verify account exists
         try:
-            account = db_adapter.find_one(account_number)
+            account = db_adapter.find_one(account_id)
             if not account:
                 session.clear()
                 return jsonify({"error": "Account not found"}), 401
@@ -61,7 +121,7 @@ def require_auth(f):
             logger.error(f"Error verifying account: {e}")
             return jsonify({"error": "Authentication failed"}), 500
         
-        return f(account_number, *args, **kwargs)
+        return f(account_id, *args, **kwargs)
     return decorated_function
 
 
@@ -110,52 +170,45 @@ def index():
 def create_account():
     """Create a new anonymous account."""
     try:
-        # Generate unique account number
-        max_attempts = 10
+        max_attempts = 5
         for _ in range(max_attempts):
-            account_number = secrets.randbelow(9999999999) + 1
-            
+            account_bundle = generate_account_secret()
+            account_doc = {
+                "account_id": account_bundle['account_id'],
+                "created_at": datetime.utcnow()
+            }
+
             try:
-                # Insert account into database
-                doc = {"account_number": account_number, "created_at": datetime.utcnow()}
-                db_adapter.insert_one(doc)
-                
-                # Key is derived from account number, no need to generate/store separately
-                logger.info(f"Created account: {account_number}")
-                
-                # Set session
+                db_adapter.insert_one(account_doc)
+
+                logger.info(f"Created account fingerprint={account_bundle['fingerprint']}")
+
                 session.permanent = True
-                session['account_number'] = account_number
-                
+                session[SESSION_ACCOUNT_ID_KEY] = account_bundle['account_id']
+
                 return jsonify({
                     "success": True,
-                    "account_number": account_number,
+                    "account_key": account_bundle['display_key'],
+                    "account_key_compact": account_bundle['normalized_key'],
+                    "account_id": account_bundle['account_id'],
+                    "account_fingerprint": account_bundle['fingerprint'],
                     "message": "Account created successfully"
                 }), 201
-                
+
             except ValueError as e:
-                # SQLite raises ValueError for duplicate keys
                 error_msg = str(e).lower()
                 if 'already exists' in error_msg:
-                    # Account number collision, try again
                     continue
-                else:
-                    # Some other ValueError, re-raise it
-                    raise
+                raise
             except Exception as e:
-                # MongoDB raises DuplicateKeyError (which is an Exception)
-                # Check if it's a duplicate key error
-                error_type = type(e).__name__
                 error_msg = str(e).lower()
+                error_type = type(e).__name__
                 if error_type == 'DuplicateKeyError' or 'duplicate' in error_msg or 'unique' in error_msg:
-                    # Account number collision, try again
                     continue
-                else:
-                    # Some other error, re-raise it
-                    raise
-        
+                raise
+
         return jsonify({"error": "Failed to create account. Please try again."}), 500
-        
+
     except Exception as e:
         logger.error(f"Error creating account: {e}")
         return jsonify({"error": "Failed to create account"}), 500
@@ -169,29 +222,29 @@ def login():
         if not data:
             return jsonify({"error": "Invalid request"}), 400
         
-        account_number = data.get('account_number')
-        if not account_number:
-            return jsonify({"error": "Account number is required"}), 400
-        
         try:
-            account_number = int(account_number)
-        except (ValueError, TypeError):
-            return jsonify({"error": "Invalid account number format"}), 400
+            raw_key = data.get('account_key') or data.get('account_number')
+            normalized_key = normalize_account_secret(raw_key)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
         
-        # Verify account exists
-        account = db_adapter.find_one(account_number)
+        account_id = derive_account_id(normalized_key)
+
+        account = db_adapter.find_one(account_id)
         if not account:
             return jsonify({"error": "Account not found"}), 404
         
         # Set session
         session.permanent = True
-        session['account_number'] = account_number
+        session[SESSION_ACCOUNT_ID_KEY] = account_id
         
-        logger.info(f"User logged in: {account_number}")
+        logger.info(f"User logged in fingerprint={format_fingerprint(account_id)}")
         
         return jsonify({
             "success": True,
-            "message": "Login successful"
+            "message": "Login successful",
+            "account_id": account_id,
+            "account_fingerprint": format_fingerprint(account_id)
         }), 200
         
     except Exception as e:
@@ -209,22 +262,26 @@ def logout():
 @app.route('/dashboard')
 def dashboard():
     """Render the dashboard page."""
-    account_number = session.get('account_number')
-    if not account_number:
+    account_id = session.get(SESSION_ACCOUNT_ID_KEY)
+    if not account_id:
         return redirect('/')
     
     # Verify account exists
-    account = db_adapter.find_one(account_number)
+    account = db_adapter.find_one(account_id)
     if not account:
         session.clear()
         return redirect('/')
     
-    return render_template('dashboard.html', account_number=account_number)
+    return render_template(
+        'dashboard.html',
+        account_id=account_id,
+        account_fingerprint=format_fingerprint(account_id)
+    )
 
 
 @app.route('/api/files', methods=['POST'])
 @require_auth
-def get_files(account_number):
+def get_files(account_id):
     """Get list of files for the authenticated user.
     Client sends encrypted file index, server validates ownership and returns file metadata.
     """
@@ -248,7 +305,7 @@ def get_files(account_number):
             file_path = get_file_storage_path(file_hash)
             if file_path.exists() and file_path.is_file():
                 # Verify ownership in database
-                ownership = db_adapter.find_file_ownership(account_number, file_hash)
+                ownership = db_adapter.find_file_ownership(account_id, file_hash)
                 if ownership:
                     size_bytes = file_path.stat().st_size
                     validated_files.append({
@@ -266,7 +323,7 @@ def get_files(account_number):
 
 @app.route('/api/upload', methods=['POST'])
 @require_auth
-def upload_file(account_number):
+def upload_file(account_id):
     """Upload an encrypted file for the authenticated user.
     Files are stored anonymously by content hash, not by user ID.
     """
@@ -310,7 +367,7 @@ def upload_file(account_number):
         # Record ownership in database (encrypted metadata stored)
         try:
             db_adapter.add_file_ownership(
-                account_number=account_number,
+                account_id=account_id,
                 file_hash=server_hash,
                 encrypted_metadata=encrypted_metadata,
                 file_size=len(encrypted_content)
@@ -336,7 +393,7 @@ def upload_file(account_number):
 
 @app.route('/api/download/<path:file_hash>', methods=['POST'])
 @require_auth
-def download_file(account_number, file_hash):
+def download_file(account_id, file_hash):
     """Download an encrypted file for the authenticated user.
     Returns encrypted file data - decryption happens client-side.
     """
@@ -346,7 +403,7 @@ def download_file(account_number, file_hash):
             return jsonify({"error": "Invalid file hash"}), 400
         
         # Verify user owns this file
-        ownership = db_adapter.find_file_ownership(account_number, file_hash)
+        ownership = db_adapter.find_file_ownership(account_id, file_hash)
         if not ownership:
             return jsonify({"error": "File not found or access denied"}), 404
         
@@ -381,7 +438,7 @@ def download_file(account_number, file_hash):
 
 @app.route('/api/delete/<path:file_hash>', methods=['DELETE'])
 @require_auth
-def delete_file(account_number, file_hash):
+def delete_file(account_id, file_hash):
     """Delete file ownership for the authenticated user.
     File is only removed from storage if no other users reference it.
     """
@@ -391,12 +448,12 @@ def delete_file(account_number, file_hash):
             return jsonify({"error": "Invalid file hash"}), 400
         
         # Verify user owns this file
-        ownership = db_adapter.find_file_ownership(account_number, file_hash)
+        ownership = db_adapter.find_file_ownership(account_id, file_hash)
         if not ownership:
             return jsonify({"error": "File not found"}), 404
         
         # Remove ownership record
-        db_adapter.remove_file_ownership(account_number, file_hash)
+        db_adapter.remove_file_ownership(account_id, file_hash)
         
         # Check if any other users reference this file
         other_owners = db_adapter.count_file_owners(file_hash)
@@ -408,7 +465,7 @@ def delete_file(account_number, file_hash):
                 file_path.unlink()
                 logger.info(f"File removed from storage: {file_hash[:8]}...")
         
-        logger.info(f"File ownership deleted for account {account_number}")
+        logger.info(f"File ownership deleted for account fingerprint={format_fingerprint(account_id)}")
         
         return jsonify({
             "success": True,
