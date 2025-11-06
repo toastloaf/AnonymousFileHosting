@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="description" content="Secure anonymous file hosting service">
-    <title>VaultSphere &mdash; Secure Anonymous Cloud</title>
+    <title>Crypten &mdash; Secure Anonymous Cloud</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -22,7 +22,7 @@
                     </svg>
                     Zero-Knowledge Storage
                 </span>
-                <h1 class="brand-title">Redefine trust with <span class="brand-highlight">VaultSphere</span></h1>
+                <h1 class="brand-title">Redefine trust with <span class="brand-highlight">Crypten</span></h1>
                 <p class="brand-description">Spin up an anonymous enclave for your files in seconds. Your account key seeds the encryption &mdash; no emails, no passwords, just pure cryptography.</p>
                 <div class="feature-grid">
                     <article class="feature-card">
@@ -167,13 +167,13 @@
                 </div>
             </div>
 
-            <p class="footer-note">VaultSphere never stores your keys. Bookmark this page and keep your account key offline for safe keeping.</p>
+            <p class="footer-note">Crypten never stores your keys. Bookmark this page and keep your account key offline for safe keeping.</p>
         </section>
     </main>
 
     <script>
-        const SESSION_ACCOUNT_KEY = 'vaultsphere.session.accountKey';
-        const SESSION_ACCOUNT_ID = 'vaultsphere.session.accountId';
+        const SESSION_ACCOUNT_KEY = 'crypten.session.accountKey';
+        const SESSION_ACCOUNT_ID = 'crypten.session.accountId';
 
         function normalizeAccountKey(value) {
             return (value || '')
@@ -251,7 +251,7 @@
                     accountDisplay.classList.remove('hidden');
 
                     cacheSessionAccount(data.account_id, data.account_key_compact);
-                    sessionStorage.setItem('vaultsphere.session.accountFingerprint', data.account_fingerprint || '');
+                    sessionStorage.setItem('crypten.session.accountFingerprint', data.account_fingerprint || '');
 
                     document.getElementById('copyAccountKeyBtn')?.setAttribute('data-key', data.account_key_compact);
 
@@ -312,7 +312,7 @@
 
                 if (response.ok && data.success) {
                     cacheSessionAccount(data.account_id, normalizedKey);
-                    sessionStorage.setItem('vaultsphere.session.accountFingerprint', data.account_fingerprint || '');
+                    sessionStorage.setItem('crypten.session.accountFingerprint', data.account_fingerprint || '');
 
                     showSuccess('Login successful! Redirecting...');
                     setTimeout(() => {

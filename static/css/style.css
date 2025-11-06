@@ -536,7 +536,7 @@ a {
     radial-gradient(circle at 15% 10%, rgba(99, 102, 241, 0.22), transparent 55%),
     radial-gradient(circle at 85% 0%, rgba(56, 189, 248, 0.25), transparent 50%),
     linear-gradient(160deg, #020617 0%, #111827 55%, #020617 100%);
-  overflow-x: hidden;
+  overflow: hidden;
   color: var(--text-primary);
 }
 
