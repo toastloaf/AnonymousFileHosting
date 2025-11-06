@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/crypto.js') }}"></script>
 </head>
 <body class="dashboard-body">
     <main class="dashboard-wrapper">
@@ -133,6 +134,25 @@
     </main>
 
     <script>
+        // Get account number from template
+        const accountNumber = {{ account_number }};
+        
+        // Initialize encryption key on page load
+        let encryptionKey = null;
+        
+        async function initializeEncryption() {
+            try {
+                encryptionKey = await clientCrypto.getOrCreateKey(accountNumber);
+                console.log('Encryption key initialized');
+            } catch (error) {
+                console.error('Failed to initialize encryption:', error);
+                showMessage('uploadMessage', 'Failed to initialize encryption. Please refresh the page.', 'error');
+            }
+        }
+        
+        // Initialize encryption when page loads
+        initializeEncryption();
+
         // Utility functions
         function showMessage(elementId, message, type = 'error') {
             const element = document.getElementById(elementId);
@@ -223,6 +243,11 @@
                 return;
             }
 
+            if (!encryptionKey) {
+                showMessage('uploadMessage', 'Encryption not initialized. Please refresh the page.', 'error');
+                return;
+            }
+
             const uploadBtn = document.getElementById('uploadBtn');
             const uploadText = document.getElementById('uploadText');
             const uploadSpinner = document.getElementById('uploadSpinner');
@@ -237,27 +262,51 @@
                 document.getElementById('uploadPercent').textContent = '0%';
                 document.getElementById('progressBar').style.width = '0%';
 
-                // Compute hash
-                const fileHash = await computeFileHash(file);
+                // Encrypt file client-side
+                document.getElementById('uploadPercent').textContent = 'Encrypting...';
+                const encryptionResult = await clientCrypto.encryptFile(file, encryptionKey);
+                
+                // Encrypt filename
+                const encryptedFilename = await clientCrypto.encryptFilename(file.name, encryptionKey);
+                
+                // Compute hash of encrypted data (for integrity verification)
+                const encryptedBlob = new Blob([encryptionResult.encrypted]);
+                const fileHash = await computeFileHash(encryptedBlob);
 
-                // Upload file
+                // Combine IV and encrypted data
+                const combinedData = new Uint8Array(encryptionResult.iv.length + encryptionResult.encrypted.length);
+                combinedData.set(encryptionResult.iv, 0);
+                combinedData.set(encryptionResult.encrypted, encryptionResult.iv.length);
+                
+                // Create blob for upload
+                const encryptedFileBlob = new Blob([combinedData], { type: 'application/octet-stream' });
+                
+                // Update progress
+                document.getElementById('uploadPercent').textContent = 'Uploading...';
+                document.getElementById('progressBar').style.width = '10%';
+
+                // Upload encrypted file
                 const formData = new FormData();
-                formData.append('file', file);
+                formData.append('file', encryptedFileBlob, 'encrypted_file');
                 formData.append('file_hash', fileHash);
+                formData.append('encrypted_filename', encryptedFilename);
+                formData.append('original_filename', file.name); // For display only, server won't store this
 
                 const xhr = new XMLHttpRequest();
 
                 xhr.upload.addEventListener('progress', (e) => {
                     if (e.lengthComputable) {
-                        const percentComplete = (e.loaded / e.total) * 100;
-                        document.getElementById('uploadPercent').textContent = Math.round(percentComplete) + '%';
-                        document.getElementById('progressBar').style.width = percentComplete + '%';
+                        // Map progress: 10% (encryption) + 90% (upload)
+                        const uploadPercent = (e.loaded / e.total) * 90;
+                        const totalPercent = 10 + uploadPercent;
+                        document.getElementById('uploadPercent').textContent = Math.round(totalPercent) + '%';
+                        document.getElementById('progressBar').style.width = totalPercent + '%';
                     }
                 });
 
                 xhr.addEventListener('load', () => {
                     if (xhr.status === 200) {
-                        showMessage('uploadMessage', 'File uploaded successfully!', 'success');
+                        showMessage('uploadMessage', 'File encrypted and uploaded successfully!', 'success');
                         document.getElementById('uploadProgress').classList.add('hidden');
                         fileInput.value = '';
                         document.getElementById('fileName').textContent = 'No file selected';
@@ -287,7 +336,7 @@
                 xhr.send(formData);
 
             } catch (error) {
-                showMessage('uploadMessage', 'Failed to upload file', 'error');
+                showMessage('uploadMessage', 'Failed to encrypt or upload file: ' + error.message, 'error');
                 console.error('Error:', error);
                 uploadBtn.disabled = false;
                 uploadText.classList.remove('hidden');
@@ -301,6 +350,11 @@
             const container = document.getElementById('filesContainer');
             container.innerHTML = '<div class="loading-state"><div class="spinner-ring" aria-hidden="true"></div><p>Decrypting your file index...</p></div>';
 
+            if (!encryptionKey) {
+                container.innerHTML = '<div class="empty-state"><p>Encryption not initialized.</p><p class="supporting-copy">Please refresh the page.</p></div>';
+                return;
+            }
+
             try {
                 const response = await fetch('/api/files', {
                     credentials: 'include'
@@ -310,32 +364,66 @@
 
                 if (data.success && data.files.length > 0) {
                     let totalBytes = 0;
-                    container.innerHTML = data.files.map(file => {
-                        totalBytes += file.size_bytes;
-                        return `
-                            <article class="file-card">
-                                <div class="file-card-header">
-                                    <div class="file-icon">
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2Z" />
-                                        </svg>
+                    
+                    // Decrypt filenames and build file list
+                    const filePromises = data.files.map(async (file) => {
+                        try {
+                            const decryptedFilename = await clientCrypto.decryptFilename(file.encrypted_filename, encryptionKey);
+                            totalBytes += file.size_bytes;
+                            return {
+                                encryptedFilename: file.encrypted_filename,
+                                decryptedFilename: decryptedFilename,
+                                sizeBytes: file.size_bytes
+                            };
+                        } catch (error) {
+                            console.error('Failed to decrypt filename:', error);
+                            return null;
+                        }
+                    });
+                    
+                    const decryptedFiles = (await Promise.all(filePromises)).filter(f => f !== null);
+                    
+                    if (decryptedFiles.length > 0) {
+                        container.innerHTML = decryptedFiles.map(file => {
+                            return `
+                                <article class="file-card">
+                                    <div class="file-card-header">
+                                        <div class="file-icon">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2Z" />
+                                            </svg>
+                                        </div>
+                                        <div class="file-meta">
+                                            <span class="file-name">${escapeHtml(file.decryptedFilename)}</span>
+                                            <span class="file-details">${formatFileSize(file.sizeBytes)}</span>
+                                        </div>
                                     </div>
-                                    <div class="file-meta">
-                                        <span class="file-name">${escapeHtml(file.name)}</span>
-                                        <span class="file-details">${formatFileSize(file.size_bytes)}</span>
+                                    <div class="file-actions">
+                                        <button type="button" onclick="downloadFile('${escapeJs(file.encryptedFilename)}')">Download</button>
+                                        <button type="button" class="danger" onclick="deleteFile('${escapeJs(file.encryptedFilename)}')">Delete</button>
                                     </div>
-                                </div>
-                                <div class="file-actions">
-                                    <button type="button" onclick="downloadFile('${escapeJs(file.name)}')">Download</button>
-                                    <button type="button" class="danger" onclick="deleteFile('${escapeJs(file.name)}')">Delete</button>
-                                </div>
-                            </article>
-                        `;
-                    }).join('');
+                                </article>
+                            `;
+                        }).join('');
 
-                    document.getElementById('totalFilesStat').textContent = data.files.length;
-                    document.getElementById('storageUsedStat').textContent = formatFileSize(totalBytes);
-                    document.getElementById('filesTrend').textContent = data.files.length === 1 ? '1 file protected' : `${data.files.length} files protected`;
+                        document.getElementById('totalFilesStat').textContent = decryptedFiles.length;
+                        document.getElementById('storageUsedStat').textContent = formatFileSize(totalBytes);
+                        document.getElementById('filesTrend').textContent = decryptedFiles.length === 1 ? '1 file protected' : `${decryptedFiles.length} files protected`;
+                    } else {
+                        container.innerHTML = `
+                            <div class="empty-state">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2Z" />
+                                </svg>
+                                <div>
+                                    <p>No files yet &mdash; your vault is waiting.</p>
+                                    <p class="supporting-copy">Upload your first document to see it appear here instantly.</p>
+                                </div>
+                            </div>`;
+                        document.getElementById('totalFilesStat').textContent = '0';
+                        document.getElementById('storageUsedStat').textContent = '0 B';
+                        document.getElementById('filesTrend').textContent = 'Ready for your first upload';
+                    }
                 } else {
                     container.innerHTML = `
                         <div class="empty-state">
@@ -358,9 +446,17 @@
         }
 
         // Download File
-        window.downloadFile = async function(filename) {
+        window.downloadFile = async function(encryptedFilename) {
+            if (!encryptionKey) {
+                showMessage('uploadMessageSecondary', 'Encryption not initialized. Please refresh the page.', 'error');
+                return;
+            }
+
             try {
-                const response = await fetch(`/api/download/${encodeURIComponent(filename)}`, {
+                // Decrypt filename to get original filename for download
+                const originalFilename = await clientCrypto.decryptFilename(encryptedFilename, encryptionKey);
+                
+                const response = await fetch(`/api/download/${encodeURIComponent(encryptedFilename)}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -369,35 +465,60 @@
                     body: JSON.stringify({})
                 });
 
-                    if (response.ok) {
-                        const blob = await response.blob();
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = filename;
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
-                        window.URL.revokeObjectURL(url);
-                        showMessage('uploadMessageSecondary', 'File downloaded successfully!', 'success');
+                if (response.ok) {
+                    // Get encrypted file data
+                    const encryptedBlob = await response.blob();
+                    const encryptedArrayBuffer = await encryptedBlob.arrayBuffer();
+                    const encryptedData = new Uint8Array(encryptedArrayBuffer);
+                    
+                    // Extract IV (first 12 bytes) and encrypted content
+                    const iv = encryptedData.slice(0, 12);
+                    const encryptedContent = encryptedData.slice(12);
+                    
+                    // Decrypt file client-side
+                    const decryptedBlob = await clientCrypto.decryptFile(
+                        encryptedContent,
+                        iv,
+                        encryptionKey,
+                        encryptedBlob.type || 'application/octet-stream'
+                    );
+                    
+                    // Download decrypted file
+                    const url = window.URL.createObjectURL(decryptedBlob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = originalFilename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                    showMessage('uploadMessageSecondary', 'File decrypted and downloaded successfully!', 'success');
                 } else {
                     const data = await response.json();
-                        showMessage('uploadMessageSecondary', data.error || 'Download failed', 'error');
+                    showMessage('uploadMessageSecondary', data.error || 'Download failed', 'error');
                 }
             } catch (error) {
-                    showMessage('uploadMessageSecondary', 'Network error', 'error');
+                showMessage('uploadMessageSecondary', 'Failed to decrypt or download file: ' + error.message, 'error');
                 console.error('Error:', error);
             }
         };
 
         // Delete File
-        window.deleteFile = async function(filename) {
-            if (!confirm(`Are you sure you want to delete "${filename}"?`)) {
+        window.deleteFile = async function(encryptedFilename) {
+            if (!encryptionKey) {
+                showMessage('uploadMessageSecondary', 'Encryption not initialized. Please refresh the page.', 'error');
                 return;
             }
 
             try {
-                const response = await fetch(`/api/delete/${encodeURIComponent(filename)}`, {
+                // Decrypt filename for confirmation message
+                const originalFilename = await clientCrypto.decryptFilename(encryptedFilename, encryptionKey);
+                
+                if (!confirm(`Are you sure you want to delete "${originalFilename}"?`)) {
+                    return;
+                }
+
+                const response = await fetch(`/api/delete/${encodeURIComponent(encryptedFilename)}`, {
                     method: 'DELETE',
                     credentials: 'include'
                 });
@@ -411,7 +532,7 @@
                     showMessage('uploadMessageSecondary', data.error || 'Delete failed', 'error');
                 }
             } catch (error) {
-                showMessage('uploadMessageSecondary', 'Network error', 'error');
+                showMessage('uploadMessageSecondary', 'Failed to decrypt filename or delete file: ' + error.message, 'error');
                 console.error('Error:', error);
             }
         };

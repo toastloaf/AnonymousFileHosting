@@ -295,24 +295,21 @@ def dashboard():
 @app.route('/api/files', methods=['GET'])
 @require_auth
 def get_files(account_number):
-    """Get list of files for the authenticated user."""
+    """Get list of encrypted files for the authenticated user.
+    Returns encrypted filenames - decryption happens client-side.
+    """
     try:
         user_dir = get_user_data_dir(account_number)
-        fernet = get_user_fernet(account_number)
         files = []
         
         for file_path in user_dir.iterdir():
             if file_path.is_file():
                 size_bytes = file_path.stat().st_size
                 size_mb = round(size_bytes / (1024 * 1024), 2)
-
-                try:
-                    original_name = decrypt_filename(file_path.name, fernet)
-                except InvalidToken:
-                    original_name = file_path.name
                 
+                # Return encrypted filename - client will decrypt it
                 files.append({
-                    'name': original_name,
+                    'encrypted_filename': file_path.name,  # Already encrypted by client
                     'size_mb': size_mb,
                     'size_bytes': size_bytes
                 })
@@ -327,7 +324,9 @@ def get_files(account_number):
 @app.route('/api/upload', methods=['POST'])
 @require_auth
 def upload_file(account_number):
-    """Upload a file for the authenticated user."""
+    """Upload an encrypted file for the authenticated user.
+    The file is already encrypted client-side, so we just store it as-is.
+    """
     try:
         if 'file' not in request.files:
             return jsonify({"error": "No file provided"}), 400
@@ -336,59 +335,48 @@ def upload_file(account_number):
         if file.filename == '':
             return jsonify({"error": "No file selected"}), 400
         
-        # Get client-side hash
+        # Get client-side hash of encrypted data
         client_hash = request.form.get('file_hash')
         if not client_hash:
             return jsonify({"error": "File hash is required"}), 400
         
-        # Read file content
-        file_content = file.read()
+        # Get encrypted filename from client
+        encrypted_filename = request.form.get('encrypted_filename')
+        if not encrypted_filename:
+            return jsonify({"error": "Encrypted filename is required"}), 400
         
-        # Verify hash
-        server_hash = hashlib.sha256(file_content).hexdigest()
+        # Read encrypted file content (already encrypted client-side)
+        encrypted_content = file.read()
+        
+        # Verify hash of encrypted data
+        server_hash = hashlib.sha256(encrypted_content).hexdigest()
         if client_hash != server_hash:
             return jsonify({"error": "File integrity check failed"}), 400
         
-        original_filename = file.filename
-        if not is_valid_plain_filename(original_filename):
-            return jsonify({"error": "Invalid filename"}), 400
-        filename = original_filename
-        
-        # Derive encryption key from account number
-        fernet = get_user_fernet(account_number)
-        
-        # Encrypt file
-        encrypted_content = fernet.encrypt(file_content)
-        
-        # Save encrypted file
+        # Save encrypted file using encrypted filename
         user_dir = get_user_data_dir(account_number)
-
-        # Remove any existing file with the same plaintext name
-        existing_path = resolve_user_file_path(user_dir, filename, fernet)
-        if existing_path and existing_path.exists():
-            existing_path.unlink()
-
-        # Encrypt filename for storage and ensure uniqueness
-        attempt = 0
-        while True:
-            encrypted_filename = encrypt_filename(filename, fernet)
-            file_path = user_dir / encrypted_filename
-            if not file_path.exists():
-                break
-            attempt += 1
-            if attempt > 5:
-                logger.error("Failed to find unique encrypted filename")
-                return jsonify({"error": "Failed to process file"}), 500
         
+        # Use encrypted filename directly (base64 encoded)
+        # Sanitize to prevent path traversal
+        safe_encrypted_filename = encrypted_filename.replace('/', '_').replace('\\', '_').replace('..', '__')
+        if len(safe_encrypted_filename) > 500:  # Reasonable limit
+            return jsonify({"error": "Encrypted filename too long"}), 400
+        
+        file_path = user_dir / safe_encrypted_filename
+        
+        # Remove any existing file with the same encrypted filename
+        if file_path.exists():
+            file_path.unlink()
+        
+        # Write encrypted content directly (no server-side encryption)
         with open(file_path, 'wb') as f:
             f.write(encrypted_content)
         
-        logger.info(f"File uploaded: {filename} for account {account_number}")
+        logger.info(f"Encrypted file uploaded for account {account_number}")
         
         return jsonify({
             "success": True,
-            "message": "File uploaded successfully",
-            "filename": filename
+            "message": "File uploaded successfully"
         }), 200
         
     except Exception as e:
@@ -396,35 +384,36 @@ def upload_file(account_number):
         return jsonify({"error": "Failed to upload file"}), 500
 
 
-@app.route('/api/download/<filename>', methods=['POST'])
+@app.route('/api/download/<path:encrypted_filename>', methods=['POST'])
 @require_auth
-def download_file(account_number, filename):
-    """Download a file for the authenticated user."""
+def download_file(account_number, encrypted_filename):
+    """Download an encrypted file for the authenticated user.
+    Returns encrypted file data - decryption happens client-side.
+    """
     try:
-        if not is_valid_plain_filename(filename):
+        # Sanitize encrypted filename to prevent path traversal
+        safe_encrypted_filename = encrypted_filename.replace('..', '__').replace('/', '_').replace('\\', '_')
+        if len(safe_encrypted_filename) > 500:
             return jsonify({"error": "Invalid filename"}), 400
+        
         user_dir = get_user_data_dir(account_number)
-        fernet = get_user_fernet(account_number)
+        file_path = user_dir / safe_encrypted_filename
 
-        file_path = resolve_user_file_path(user_dir, filename, fernet)
-
-        if not file_path or not file_path.exists() or not file_path.is_file():
+        if not file_path.exists() or not file_path.is_file():
             return jsonify({"error": "File not found"}), 404
         
-        # Read and decrypt file
+        # Read encrypted file (no server-side decryption)
         try:
             with open(file_path, 'rb') as f:
                 encrypted_content = f.read()
-            
-            decrypted_content = fernet.decrypt(encrypted_content)
         except Exception as e:
-            logger.error(f"Decryption failed: {e}")
-            return jsonify({"error": "Decryption failed"}), 500
+            logger.error(f"Failed to read file: {e}")
+            return jsonify({"error": "Failed to read file"}), 500
         
-        # Send file
-        response = make_response(decrypted_content)
-        response.headers['Content-Disposition'] = build_content_disposition(filename)
+        # Send encrypted file as-is (client will decrypt)
+        response = make_response(encrypted_content)
         response.headers['Content-Type'] = 'application/octet-stream'
+        # Don't set Content-Disposition with original filename - client will handle that
         
         return response
         
@@ -435,24 +424,25 @@ def download_file(account_number, filename):
 
 
 
-@app.route('/api/delete/<filename>', methods=['DELETE'])
+@app.route('/api/delete/<path:encrypted_filename>', methods=['DELETE'])
 @require_auth
-def delete_file(account_number, filename):
-    """Delete a file for the authenticated user."""
+def delete_file(account_number, encrypted_filename):
+    """Delete an encrypted file for the authenticated user."""
     try:
-        if not is_valid_plain_filename(filename):
+        # Sanitize encrypted filename to prevent path traversal
+        safe_encrypted_filename = encrypted_filename.replace('..', '__').replace('/', '_').replace('\\', '_')
+        if len(safe_encrypted_filename) > 500:
             return jsonify({"error": "Invalid filename"}), 400
+        
         user_dir = get_user_data_dir(account_number)
-        fernet = get_user_fernet(account_number)
+        file_path = user_dir / safe_encrypted_filename
 
-        file_path = resolve_user_file_path(user_dir, filename, fernet)
-
-        if not file_path or not file_path.exists():
+        if not file_path.exists():
             return jsonify({"error": "File not found"}), 404
         
         file_path.unlink()
         
-        logger.info(f"File deleted: {filename} for account {account_number}")
+        logger.info(f"Encrypted file deleted for account {account_number}")
         
         return jsonify({
             "success": True,
