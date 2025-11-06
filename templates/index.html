@@ -23,7 +23,7 @@
                     Zero-Knowledge Storage
                 </span>
                 <h1 class="brand-title">Redefine trust with <span class="brand-highlight">VaultSphere</span></h1>
-                <p class="brand-description">Spin up an anonymous enclave for your files in seconds. Your account number becomes the encryption key &mdash; no emails, no passwords, just pure cryptography.</p>
+                <p class="brand-description">Spin up an anonymous enclave for your files in seconds. Your account key seeds the encryption &mdash; no emails, no passwords, just pure cryptography.</p>
                 <div class="feature-grid">
                     <article class="feature-card">
                         <div class="feature-icon">
@@ -92,35 +92,35 @@
             </div>
 
             <div id="accountDisplay" class="account-display hidden" aria-live="polite">
-                <span class="account-display__label">Account number &middot; keep this safe</span>
+                <span class="account-display__label">Account key &middot; keep this safe</span>
                 <div class="account-pill">
-                    <code id="accountNumber">0000&nbsp;0000</code>
-                    <button id="copyAccountBtn" type="button" aria-label="Copy account number">
+                    <code id="accountKeyValue">AAAA-BBBB</code>
+                    <button id="copyAccountKeyBtn" type="button" aria-label="Copy account key">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2" />
                             <path stroke-linecap="round" stroke-linejoin="round" d="M16 8h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-2" />
                         </svg>
                     </button>
                 </div>
-                <p class="supporting-copy">Your account number <strong>is</strong> the encryption key. Store it offline and share with no one.</p>
+                <p class="supporting-copy">Your account key <strong>is</strong> the encryption seed. Store it offline and share with no one.</p>
             </div>
 
             <div class="divider" role="separator" aria-hidden="true">Or sign back in</div>
 
             <form id="loginForm" class="form-stack" novalidate>
                 <div class="form-field">
-                    <label for="accountNumberInput">Account number</label>
+                    <label for="accountKeyInput">Account key</label>
                     <div class="input-wrapper">
                         <input
                             type="text"
-                            id="accountNumberInput"
-                            name="account_number"
+                            id="accountKeyInput"
+                            name="account_key"
                             class="input-field"
-                            placeholder="0000000000"
-                            inputmode="numeric"
+                            placeholder="AAAA-BBBB-CCCC-DDDD"
+                            inputmode="text"
                             autocomplete="off"
                             required
-                            pattern="[0-9]*"
+                            pattern="[A-Za-z2-7\\-\\s]+"
                             aria-describedby="account-help"
                         >
                         <div class="input-icon" aria-hidden="true">
@@ -130,7 +130,7 @@
                             </svg>
                         </div>
                     </div>
-                    <p id="account-help" class="supporting-copy">Numbers only. We&rsquo;ll never ask for a password.</p>
+                    <p id="account-help" class="supporting-copy">Paste the exact account key you stored. Letters A-Z and digits 2-7 only.</p>
                 </div>
 
                 <button id="loginBtn" type="submit" class="btn btn-secondary btn-full">
@@ -167,16 +167,28 @@
                 </div>
             </div>
 
-            <p class="footer-note">VaultSphere never stores your keys. Bookmark this page and keep your account number offline for safe keeping.</p>
+            <p class="footer-note">VaultSphere never stores your keys. Bookmark this page and keep your account key offline for safe keeping.</p>
         </section>
     </main>
 
     <script>
-        function formatAccountNumber(number) {
-            return String(number).replace(/\B(?=(\d{4})+(?!\d))/g, ' ');
+        const SESSION_ACCOUNT_KEY = 'vaultsphere.session.accountKey';
+        const SESSION_ACCOUNT_ID = 'vaultsphere.session.accountId';
+
+        function normalizeAccountKey(value) {
+            return (value || '')
+                .toUpperCase()
+                .replace(/[^A-Z2-7]/g, '');
         }
 
-        // Utility functions
+        function formatAccountKey(value) {
+            const normalized = normalizeAccountKey(value);
+            if (!normalized) {
+                return '';
+            }
+            return normalized.match(/.{1,4}/g).join('-');
+        }
+
         function showError(message) {
             const errorDiv = document.getElementById('errorMessage');
             const errorText = document.getElementById('errorText');
@@ -197,7 +209,7 @@
             const button = document.getElementById(buttonId);
             const text = document.getElementById(textId);
             const spinner = document.getElementById(spinnerId);
-            
+
             if (isLoading) {
                 button.disabled = true;
                 text.classList.add('hidden');
@@ -209,10 +221,18 @@
             }
         }
 
-        // Create Account
+        function cacheSessionAccount(accountId, normalizedKey) {
+            if (accountId) {
+                sessionStorage.setItem(SESSION_ACCOUNT_ID, accountId);
+            }
+            if (normalizedKey) {
+                sessionStorage.setItem(SESSION_ACCOUNT_KEY, normalizedKey);
+            }
+        }
+
         document.getElementById('createAccountBtn').addEventListener('click', async () => {
             setLoading('createAccountBtn', 'createAccountText', 'createAccountSpinner', true);
-            
+
             try {
                 const response = await fetch('/api/create-account', {
                     method: 'POST',
@@ -224,11 +244,19 @@
 
                 const data = await response.json();
 
-                    if (response.ok && data.success) {
-                        document.getElementById('accountNumber').textContent = formatAccountNumber(data.account_number);
-                    document.getElementById('accountDisplay').classList.remove('hidden');
+                if (response.ok && data.success) {
+                    const accountDisplay = document.getElementById('accountDisplay');
+                    const accountKeyValue = document.getElementById('accountKeyValue');
+                    accountKeyValue.textContent = data.account_key;
+                    accountDisplay.classList.remove('hidden');
+
+                    cacheSessionAccount(data.account_id, data.account_key_compact);
+                    sessionStorage.setItem('vaultsphere.session.accountFingerprint', data.account_fingerprint || '');
+
+                    document.getElementById('copyAccountKeyBtn')?.setAttribute('data-key', data.account_key_compact);
+
                     showSuccess('Account created successfully! Redirecting to dashboard...');
-                    
+
                     setTimeout(() => {
                         window.location.href = '/dashboard';
                     }, 1500);
@@ -243,24 +271,28 @@
             }
         });
 
-        // Copy Account Number
-        document.getElementById('copyAccountBtn')?.addEventListener('click', () => {
-            const accountNumber = document.getElementById('accountNumber').textContent.replace(/\s+/g, '');
-            navigator.clipboard.writeText(accountNumber).then(() => {
-                showSuccess('Account number copied to clipboard!');
+        document.getElementById('copyAccountKeyBtn')?.addEventListener('click', () => {
+            const key = document.getElementById('copyAccountKeyBtn').getAttribute('data-key')
+                || normalizeAccountKey(document.getElementById('accountKeyValue').textContent);
+            if (!key) {
+                showError('Nothing to copy yet.');
+                return;
+            }
+            navigator.clipboard.writeText(key).then(() => {
+                showSuccess('Account key copied to clipboard!');
             }).catch(() => {
-                showError('Failed to copy account number');
+                showError('Failed to copy account key');
             });
         });
 
-        // Login Form
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const accountNumber = document.getElementById('accountNumberInput').value.trim();
-            
-            if (!accountNumber) {
-                showError('Please enter your account number');
+        document.getElementById('loginForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const input = document.getElementById('accountKeyInput');
+            const normalizedKey = normalizeAccountKey(input.value.trim());
+
+            if (!normalizedKey) {
+                showError('Please enter your account key');
                 return;
             }
 
@@ -273,12 +305,15 @@
                         'Content-Type': 'application/json'
                     },
                     credentials: 'include',
-                    body: JSON.stringify({ account_number: accountNumber })
+                    body: JSON.stringify({ account_key: normalizedKey })
                 });
 
                 const data = await response.json();
 
                 if (response.ok && data.success) {
+                    cacheSessionAccount(data.account_id, normalizedKey);
+                    sessionStorage.setItem('vaultsphere.session.accountFingerprint', data.account_fingerprint || '');
+
                     showSuccess('Login successful! Redirecting...');
                     setTimeout(() => {
                         window.location.href = '/dashboard';
@@ -294,9 +329,12 @@
             }
         });
 
-        // Format account number input (numbers only)
-        document.getElementById('accountNumberInput').addEventListener('input', (e) => {
-            e.target.value = e.target.value.replace(/[^0-9]/g, '');
+        document.getElementById('accountKeyInput').addEventListener('input', (event) => {
+            const cursorPos = event.target.selectionStart;
+            const normalized = normalizeAccountKey(event.target.value);
+            const formatted = normalized.match(/.{1,4}/g)?.join('-') || '';
+            event.target.value = formatted;
+            event.target.setSelectionRange(cursorPos, cursorPos);
         });
     </script>
 </body>

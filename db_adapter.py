@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 class DatabaseAdapter:
     """Base class for database adapters."""
     
-    def find_one(self, account_number: int) -> Optional[Dict[str, Any]]:
-        """Find an account by account number."""
+    def find_one(self, account_id: str) -> Optional[Dict[str, Any]]:
+        """Find an account by canonical account identifier."""
         raise NotImplementedError
     
     def insert_one(self, account: Dict[str, Any]) -> None:
@@ -28,16 +28,16 @@ class DatabaseAdapter:
         """Initialize the database connection and tables."""
         raise NotImplementedError
     
-    def add_file_ownership(self, account_number: int, file_hash: str, 
+    def add_file_ownership(self, account_id: str, file_hash: str, 
                           encrypted_metadata: str, file_size: int) -> None:
         """Record file ownership for an account."""
         raise NotImplementedError
     
-    def find_file_ownership(self, account_number: int, file_hash: str) -> Optional[Dict[str, Any]]:
+    def find_file_ownership(self, account_id: str, file_hash: str) -> Optional[Dict[str, Any]]:
         """Find file ownership record."""
         raise NotImplementedError
     
-    def remove_file_ownership(self, account_number: int, file_hash: str) -> None:
+    def remove_file_ownership(self, account_id: str, file_hash: str) -> None:
         """Remove file ownership record."""
         raise NotImplementedError
     
@@ -72,12 +72,12 @@ class MongoDBAdapter(DatabaseAdapter):
             self.db = self.client[self.db_name]
             self.collection = self.db[self.collection_name]
             # Create index on account number for faster lookups
-            self.collection.create_index("account_number", unique=True)
+            self.collection.create_index("account_id", unique=True)
             
             # Create indexes for file ownership collection
             file_ownership_collection = self.db['file_ownership']
             file_ownership_collection.create_index(
-                [("account_number", 1), ("file_hash", 1)], 
+                [("account_id", 1), ("file_hash", 1)], 
                 unique=True
             )
             file_ownership_collection.create_index("file_hash")
@@ -87,16 +87,15 @@ class MongoDBAdapter(DatabaseAdapter):
             logger.error(f"Failed to connect to MongoDB: {e}")
             raise
     
-    def find_one(self, account_number: int) -> Optional[Dict[str, Any]]:
-        """Find an account by account number."""
-        return self.collection.find_one({"account_number": account_number})
+    def find_one(self, account_id: str) -> Optional[Dict[str, Any]]:
+        """Find an account by canonical identifier."""
+        return self.collection.find_one({"account_id": account_id})
     
     def insert_one(self, account: Dict[str, Any]) -> None:
         """Insert a new account."""
-        from pymongo.errors import DuplicateKeyError
         self.collection.insert_one(account)
     
-    def add_file_ownership(self, account_number: int, file_hash: str, 
+    def add_file_ownership(self, account_id: str, file_hash: str, 
                           encrypted_metadata: str, file_size: int) -> None:
         """Record file ownership for an account."""
         file_ownership_collection = self.db['file_ownership']
@@ -104,7 +103,7 @@ class MongoDBAdapter(DatabaseAdapter):
         # Use upsert to handle duplicate uploads
         file_ownership_collection.update_one(
             {
-                'account_number': account_number,
+                'account_id': account_id,
                 'file_hash': file_hash
             },
             {
@@ -117,19 +116,19 @@ class MongoDBAdapter(DatabaseAdapter):
             upsert=True
         )
     
-    def find_file_ownership(self, account_number: int, file_hash: str) -> Optional[Dict[str, Any]]:
+    def find_file_ownership(self, account_id: str, file_hash: str) -> Optional[Dict[str, Any]]:
         """Find file ownership record."""
         file_ownership_collection = self.db['file_ownership']
         return file_ownership_collection.find_one({
-            'account_number': account_number,
+            'account_id': account_id,
             'file_hash': file_hash
         })
     
-    def remove_file_ownership(self, account_number: int, file_hash: str) -> None:
+    def remove_file_ownership(self, account_id: str, file_hash: str) -> None:
         """Remove file ownership record."""
         file_ownership_collection = self.db['file_ownership']
         file_ownership_collection.delete_one({
-            'account_number': account_number,
+            'account_id': account_id,
             'file_hash': file_hash
         })
     
@@ -153,34 +152,41 @@ class SQLiteAdapter(DatabaseAdapter):
             self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
             self.conn.row_factory = sqlite3.Row  # Enable column access by name
             
-            # Create accounts table if it doesn't exist
             cursor = self.conn.cursor()
+            # Detect and archive legacy schemas that reference numeric account numbers
+            cursor.execute("PRAGMA table_info(accounts)")
+            account_columns = {row['name'] for row in cursor.fetchall()}
+            if account_columns and 'account_number' in account_columns:
+                logger.warning("Detected legacy accounts table with numeric account numbers. Renaming to accounts_legacy (data cannot be upgraded automatically).")
+                cursor.execute('ALTER TABLE accounts RENAME TO accounts_legacy')
+
+            cursor.execute("PRAGMA table_info(file_ownership)")
+            ownership_columns = {row['name'] for row in cursor.fetchall()}
+            if ownership_columns and 'account_number' in ownership_columns:
+                logger.warning("Detected legacy file_ownership table tied to numeric account numbers. Renaming to file_ownership_legacy (data cannot be upgraded automatically).")
+                cursor.execute('ALTER TABLE file_ownership RENAME TO file_ownership_legacy')
+
+            # Create accounts table if it doesn't exist (secure schema)
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS accounts (
-                    account_number INTEGER PRIMARY KEY,
+                    account_id TEXT PRIMARY KEY,
                     created_at TEXT NOT NULL
                 )
             ''')
-            
-            # Create unique index on account_number
-            cursor.execute('''
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_account_number 
-                ON accounts(account_number)
-            ''')
-            
-            # Create file ownership table
+
+            # Create file ownership table bound to hashed account identifiers
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS file_ownership (
-                    account_number INTEGER NOT NULL,
+                    account_id TEXT NOT NULL,
                     file_hash TEXT NOT NULL,
                     encrypted_metadata TEXT NOT NULL,
                     file_size INTEGER NOT NULL,
                     uploaded_at TEXT NOT NULL,
-                    PRIMARY KEY (account_number, file_hash),
-                    FOREIGN KEY (account_number) REFERENCES accounts(account_number)
+                    PRIMARY KEY (account_id, file_hash),
+                    FOREIGN KEY (account_id) REFERENCES accounts(account_id)
                 )
             ''')
-            
+
             # Create index on file_hash for counting owners
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_file_hash 
@@ -193,21 +199,21 @@ class SQLiteAdapter(DatabaseAdapter):
             logger.error(f"Failed to connect to SQLite database: {e}")
             raise
     
-    def find_one(self, account_number: int) -> Optional[Dict[str, Any]]:
-        """Find an account by account number."""
+    def find_one(self, account_id: str) -> Optional[Dict[str, Any]]:
+        """Find an account by identifier."""
         if not self.conn:
             raise RuntimeError("Database not initialized")
         
         cursor = self.conn.cursor()
         cursor.execute(
-            'SELECT account_number, created_at FROM accounts WHERE account_number = ?',
-            (account_number,)
+            'SELECT account_id, created_at FROM accounts WHERE account_id = ?',
+            (account_id,)
         )
         row = cursor.fetchone()
         
         if row:
             return {
-                'account_number': row['account_number'],
+                'account_id': row['account_id'],
                 'created_at': row['created_at']
             }
         return None
@@ -222,16 +228,16 @@ class SQLiteAdapter(DatabaseAdapter):
         cursor = self.conn.cursor()
         try:
             cursor.execute(
-                'INSERT INTO accounts (account_number, created_at) VALUES (?, ?)',
-                (account['account_number'], account['created_at'].isoformat())
+                'INSERT INTO accounts (account_id, created_at) VALUES (?, ?)',
+                (account['account_id'], account['created_at'].isoformat())
             )
             self.conn.commit()
         except sqlite3.IntegrityError:
             # Duplicate key error (account number already exists)
             self.conn.rollback()
-            raise ValueError("Account number already exists")
+            raise ValueError("Account identifier already exists")
     
-    def add_file_ownership(self, account_number: int, file_hash: str, 
+    def add_file_ownership(self, account_id: str, file_hash: str, 
                           encrypted_metadata: str, file_size: int) -> None:
         """Record file ownership for an account."""
         if not self.conn:
@@ -241,30 +247,30 @@ class SQLiteAdapter(DatabaseAdapter):
         try:
             cursor.execute('''
                 INSERT OR REPLACE INTO file_ownership 
-                (account_number, file_hash, encrypted_metadata, file_size, uploaded_at)
+                (account_id, file_hash, encrypted_metadata, file_size, uploaded_at)
                 VALUES (?, ?, ?, ?, ?)
-            ''', (account_number, file_hash, encrypted_metadata, file_size, datetime.utcnow().isoformat()))
+            ''', (account_id, file_hash, encrypted_metadata, file_size, datetime.utcnow().isoformat()))
             self.conn.commit()
         except sqlite3.Error as e:
             self.conn.rollback()
             raise RuntimeError(f"Failed to add file ownership: {e}")
     
-    def find_file_ownership(self, account_number: int, file_hash: str) -> Optional[Dict[str, Any]]:
+    def find_file_ownership(self, account_id: str, file_hash: str) -> Optional[Dict[str, Any]]:
         """Find file ownership record."""
         if not self.conn:
             raise RuntimeError("Database not initialized")
         
         cursor = self.conn.cursor()
         cursor.execute('''
-            SELECT account_number, file_hash, encrypted_metadata, file_size, uploaded_at
+            SELECT account_id, file_hash, encrypted_metadata, file_size, uploaded_at
             FROM file_ownership
-            WHERE account_number = ? AND file_hash = ?
-        ''', (account_number, file_hash))
+            WHERE account_id = ? AND file_hash = ?
+        ''', (account_id, file_hash))
         row = cursor.fetchone()
         
         if row:
             return {
-                'account_number': row['account_number'],
+                'account_id': row['account_id'],
                 'file_hash': row['file_hash'],
                 'encrypted_metadata': row['encrypted_metadata'],
                 'file_size': row['file_size'],
@@ -272,7 +278,7 @@ class SQLiteAdapter(DatabaseAdapter):
             }
         return None
     
-    def remove_file_ownership(self, account_number: int, file_hash: str) -> None:
+    def remove_file_ownership(self, account_id: str, file_hash: str) -> None:
         """Remove file ownership record."""
         if not self.conn:
             raise RuntimeError("Database not initialized")
@@ -280,8 +286,8 @@ class SQLiteAdapter(DatabaseAdapter):
         cursor = self.conn.cursor()
         cursor.execute('''
             DELETE FROM file_ownership
-            WHERE account_number = ? AND file_hash = ?
-        ''', (account_number, file_hash))
+            WHERE account_id = ? AND file_hash = ?
+        ''', (account_id, file_hash))
         self.conn.commit()
     
     def count_file_owners(self, file_hash: str) -> int:

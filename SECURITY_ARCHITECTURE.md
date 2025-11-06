@@ -33,7 +33,12 @@ This document describes the enhanced security architecture that eliminates the d
    - Metadata includes: original filename, original size, upload timestamp
    - Encrypted using AES-GCM with the user's encryption key
 
-4. **Database-Backed Ownership**
+4. **Hardened Account Keys**
+   - Accounts are provisioned with 192-bit base32 secrets shown only once to the user
+   - Server stores only a SHA-256 hash of the normalized secret (`account_id`)
+   - SQLite and MongoDB schemas no longer persist raw account numbers or keys
+
+5. **Database-Backed Ownership**
    - New `file_ownership` table tracks which accounts can access which file hashes
    - Even if the database is compromised, the attacker only sees hashes, not filenames
    - File reference counting enables safe deletion (file removed only when no users reference it)
@@ -58,22 +63,22 @@ This document describes the enhanced security architecture that eliminates the d
 
 **Scenario 3: Full Server Compromise (Filesystem + Database)**
 - Attacker sees: Account → Hash mappings, encrypted file blobs
-- Attacker cannot:
-  - Decrypt file contents (encryption keys never leave client)
-  - Determine original filenames (metadata is client-side encrypted)
-  - Link files to real identities (account numbers are anonymous)
+  - Attacker cannot:
+    - Decrypt file contents (encryption keys never leave client)
+    - Determine original filenames (metadata is client-side encrypted)
+    - Link files to real identities (hashed account identifiers reveal nothing about the underlying key)
 
 ### Key Security Benefits
 
 1. **Separation of Identity and Storage**
-   - No direct mapping between account numbers and file storage locations
+   - No direct mapping between account keys and file storage locations
    - Account compromise doesn't reveal storage locations
    - Storage location knowledge doesn't reveal ownership
 
 2. **Client-Side Key Management**
-   - Encryption keys generated randomly in browser
-   - Stored only in localStorage, never transmitted to server
-   - Server cannot compute or derive user keys
+   - Encryption keys derived via PBKDF2 from the high-entropy account key entirely within the browser
+   - Derived keys are cached locally in `localStorage`, never transmitted to the server
+   - Server cannot compute or derive user keys without the user-supplied secret
 
 3. **Encrypted Metadata**
    - Even metadata like filenames are encrypted client-side
@@ -228,6 +233,11 @@ For existing deployments using user-ID-based folders:
    - Content-addressable storage enables deduplication
    - Privacy implication: timing attacks could reveal common files
    - Mitigation: Add random delay to upload responses
+
+5. **Hashed Account Identifiers**
+   - Server persists only `account_id = sha256(account_key)` values
+   - Database leaks do not reveal account keys or allow offline brute-force (secret has 192 bits of entropy)
+   - SQLite adapter automatically archives legacy tables that still contain numeric account numbers
 
 ## Conclusion
 

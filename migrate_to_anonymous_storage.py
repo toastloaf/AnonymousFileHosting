@@ -63,7 +63,23 @@ def migrate_user_directory(account_number, user_dir, data_dir, db_adapter, dry_r
     migrated_count = 0
     error_count = 0
     
-    logger.info(f"Migrating account {account_number}...")
+    account_secret = str(account_number)
+    account_id = hashlib.sha256(account_secret.encode('utf-8')).hexdigest()
+    account_fingerprint = account_id[:12]
+
+    if not dry_run:
+        try:
+            db_adapter.insert_one({
+                "account_id": account_id,
+                "created_at": datetime.utcnow()
+            })
+            logger.info(f"Provisioned account fingerprint={account_fingerprint} from legacy account {account_number}")
+        except ValueError:
+            logger.info(f"Account fingerprint={account_fingerprint} already exists; reusing existing record")
+        except Exception as exc:
+            logger.warning(f"Failed to upsert account fingerprint={account_fingerprint}: {exc}")
+    
+    logger.info(f"Migrating account {account_number} (fingerprint={account_fingerprint})...")
     
     for file_path in user_dir.iterdir():
         if not file_path.is_file():
@@ -98,7 +114,7 @@ def migrate_user_directory(account_number, user_dir, data_dir, db_adapter, dry_r
                 
                 try:
                     db_adapter.add_file_ownership(
-                        account_number=account_number,
+                        account_id=account_id,
                         file_hash=file_hash,
                         encrypted_metadata=encrypted_metadata,
                         file_size=file_size
@@ -121,7 +137,7 @@ def migrate_user_directory(account_number, user_dir, data_dir, db_adapter, dry_r
         stats['migrated'] += migrated_count
         stats['errors'] += error_count
     
-    logger.info(f"Account {account_number}: {migrated_count}/{file_count} files migrated, {error_count} errors")
+    logger.info(f"Account {account_number} (fingerprint={account_fingerprint}): {migrated_count}/{file_count} files migrated, {error_count} errors")
 
 
 def backup_directory(source_dir, backup_dir):

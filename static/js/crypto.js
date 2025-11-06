@@ -10,28 +10,18 @@ class ClientCrypto {
             length: 256
         };
         this.ivLength = 12; // 96 bits for GCM
+        this.kdfSalt = new TextEncoder().encode('vaultsphere_ekdf_v1');
+        this.kdfIterations = 200000;
     }
 
     /**
-     * Generate a random encryption key
-     * This key is generated client-side and never sent to the server
+     * Derive a key from the shared account secret using PBKDF2
+     * This ensures deterministic key generation across devices.
      */
-    async generateKey() {
-        return await crypto.subtle.generateKey(
-            this.algorithm,
-            true, // extractable
-            ['encrypt', 'decrypt']
-        );
-    }
-
-    /**
-     * Derive a key from account number using PBKDF2
-     * This ensures deterministic key generation from account number
-     */
-    async deriveKeyFromAccount(accountNumber) {
-        const accountBytes = new TextEncoder().encode(String(accountNumber));
+    async deriveKeyFromAccount(accountSecret) {
+        const accountBytes = new TextEncoder().encode(String(accountSecret));
         
-        // Import account number as key material
+        // Import account secret as key material
         const keyMaterial = await crypto.subtle.importKey(
             'raw',
             accountBytes,
@@ -41,12 +31,11 @@ class ClientCrypto {
         );
 
         // Derive key using PBKDF2
-        const salt = new TextEncoder().encode('vaultsphere_salt_v1');
         const derivedKey = await crypto.subtle.deriveKey(
             {
                 name: 'PBKDF2',
-                salt: salt,
-                iterations: 100000,
+                salt: this.kdfSalt,
+                iterations: this.kdfIterations,
                 hash: 'SHA-256'
             },
             keyMaterial,
@@ -173,33 +162,33 @@ class ClientCrypto {
      * Store encryption key in localStorage
      * Key is stored as base64-encoded raw bytes
      */
-    async storeKey(key, accountNumber) {
+    async storeKey(key, accountId) {
         const keyBytes = await this.exportKey(key);
         const keyBase64 = this.uint8ArrayToBase64(keyBytes);
-        localStorage.setItem(`encryption_key_${accountNumber}`, keyBase64);
+        localStorage.setItem(`encryption_key_${accountId}`, keyBase64);
     }
 
     /**
      * Store encrypted file index in localStorage
      * Index maps file hashes to encrypted metadata (filename, upload date, etc.)
      */
-    storeFileIndex(accountNumber, fileIndex) {
-        localStorage.setItem(`file_index_${accountNumber}`, JSON.stringify(fileIndex));
+    storeFileIndex(accountId, fileIndex) {
+        localStorage.setItem(`file_index_${accountId}`, JSON.stringify(fileIndex));
     }
 
     /**
      * Load encrypted file index from localStorage
      */
-    loadFileIndex(accountNumber) {
-        const indexJson = localStorage.getItem(`file_index_${accountNumber}`);
+    loadFileIndex(accountId) {
+        const indexJson = localStorage.getItem(`file_index_${accountId}`);
         return indexJson ? JSON.parse(indexJson) : [];
     }
 
     /**
      * Load encryption key from localStorage
      */
-    async loadKey(accountNumber) {
-        const keyBase64 = localStorage.getItem(`encryption_key_${accountNumber}`);
+    async loadKey(accountId) {
+        const keyBase64 = localStorage.getItem(`encryption_key_${accountId}`);
         if (!keyBase64) {
             return null;
         }
@@ -208,20 +197,22 @@ class ClientCrypto {
     }
 
     /**
-     * Initialize or load encryption key for an account
-     * If key doesn't exist, generates a new one and stores it
+     * Load the cached encryption key or derive it deterministically.
      */
-    async getOrCreateKey(accountNumber) {
-        let key = await this.loadKey(accountNumber);
-        
-        if (!key) {
-            // Generate new random key (not derived from account number)
-            // This ensures server cannot compute it
-            key = await this.generateKey();
-            await this.storeKey(key, accountNumber);
+    async getKeyForAccount(accountId, accountSecret) {
+        let key = await this.loadKey(accountId);
+
+        if (key) {
+            return key;
         }
-        
-        return key;
+
+        if (!accountSecret) {
+            return null;
+        }
+
+        const derived = await this.deriveKeyFromAccount(accountSecret);
+        await this.storeKey(derived, accountId);
+        return derived;
     }
 
     /**
