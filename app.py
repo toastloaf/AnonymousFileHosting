@@ -14,7 +14,7 @@ from functools import wraps
 from flask import Flask, jsonify, render_template, request, make_response, send_file, session, redirect
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
@@ -96,6 +96,39 @@ def derive_encryption_key(account_number):
     # Derive key and encode as base64 for Fernet
     key = base64.urlsafe_b64encode(kdf.derive(account_bytes))
     return key
+
+
+def get_user_fernet(account_number):
+    """Get a Fernet instance for the specified account."""
+    key = derive_encryption_key(account_number)
+    return Fernet(key)
+
+
+def encrypt_filename(filename, fernet):
+    """Encrypt a filename using the provided Fernet instance."""
+    return fernet.encrypt(filename.encode('utf-8')).decode('utf-8')
+
+
+def decrypt_filename(encrypted_filename, fernet):
+    """Decrypt an encrypted filename using the provided Fernet instance."""
+    return fernet.decrypt(encrypted_filename.encode('utf-8')).decode('utf-8')
+
+
+def resolve_user_file_path(user_dir, target_filename, fernet):
+    """Resolve the filesystem path for a user's file by its plaintext filename."""
+    for file_path in user_dir.iterdir():
+        if not file_path.is_file():
+            continue
+
+        try:
+            decrypted_name = decrypt_filename(file_path.name, fernet)
+            if decrypted_name == target_filename:
+                return file_path
+        except InvalidToken:
+            if file_path.name == target_filename:
+                return file_path
+
+    return None
 
 
 @app.errorhandler(413)
@@ -239,15 +272,21 @@ def get_files(account_number):
     """Get list of files for the authenticated user."""
     try:
         user_dir = get_user_data_dir(account_number)
+        fernet = get_user_fernet(account_number)
         files = []
         
         for file_path in user_dir.iterdir():
             if file_path.is_file():
                 size_bytes = file_path.stat().st_size
                 size_mb = round(size_bytes / (1024 * 1024), 2)
+
+                try:
+                    original_name = decrypt_filename(file_path.name, fernet)
+                except InvalidToken:
+                    original_name = file_path.name
                 
                 files.append({
-                    'name': file_path.name,
+                    'name': original_name,
                     'size_mb': size_mb,
                     'size_bytes': size_bytes
                 })
@@ -290,15 +329,30 @@ def upload_file(account_number):
             return jsonify({"error": "Invalid filename"}), 400
         
         # Derive encryption key from account number
-        key = derive_encryption_key(account_number)
-        fernet = Fernet(key)
+        fernet = get_user_fernet(account_number)
         
         # Encrypt file
         encrypted_content = fernet.encrypt(file_content)
         
         # Save encrypted file
         user_dir = get_user_data_dir(account_number)
-        file_path = user_dir / filename
+
+        # Remove any existing file with the same plaintext name
+        existing_path = resolve_user_file_path(user_dir, filename, fernet)
+        if existing_path and existing_path.exists():
+            existing_path.unlink()
+
+        # Encrypt filename for storage and ensure uniqueness
+        attempt = 0
+        while True:
+            encrypted_filename = encrypt_filename(filename, fernet)
+            file_path = user_dir / encrypted_filename
+            if not file_path.exists():
+                break
+            attempt += 1
+            if attempt > 5:
+                logger.error("Failed to find unique encrypted filename")
+                return jsonify({"error": "Failed to process file"}), 500
         
         with open(file_path, 'wb') as f:
             f.write(encrypted_content)
@@ -327,14 +381,12 @@ def download_file(account_number, filename):
         
         filename = secure_filename(filename)
         user_dir = get_user_data_dir(account_number)
-        file_path = user_dir / filename
-        
-        if not file_path.exists() or not file_path.is_file():
+        fernet = get_user_fernet(account_number)
+
+        file_path = resolve_user_file_path(user_dir, filename, fernet)
+
+        if not file_path or not file_path.exists() or not file_path.is_file():
             return jsonify({"error": "File not found"}), 404
-        
-        # Derive encryption key from account number
-        key = derive_encryption_key(account_number)
-        fernet = Fernet(key)
         
         # Read and decrypt file
         try:
@@ -370,9 +422,11 @@ def delete_file(account_number, filename):
         
         filename = secure_filename(filename)
         user_dir = get_user_data_dir(account_number)
-        file_path = user_dir / filename
-        
-        if not file_path.exists():
+        fernet = get_user_fernet(account_number)
+
+        file_path = resolve_user_file_path(user_dir, filename, fernet)
+
+        if not file_path or not file_path.exists():
             return jsonify({"error": "File not found"}), 404
         
         file_path.unlink()
