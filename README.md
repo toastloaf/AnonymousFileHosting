@@ -1,3 +1,6 @@
+# Note: This is a school project that i tried to redo by just vibe-coding all the missing stuff.
+# The original project (not vibe-improved) can be found by going back to the update readme commit from 2024.
+<br>
 # Sky-lagring basert på et anonymt konto nummer system for inlogging
 
 Dette prosjektet er laget til inlevering av et python-prosjekt (brukerinput).<br>
